@@ -1,0 +1,11 @@
+﻿.comparator-details summary { cursor: pointer; color: var(--bs-primary, #245b87); font-weight: 600; white-space: normal; }
+.comparator-alternatives { margin-top: 1rem; padding: 1rem; background: #f7f9fc; border-radius: .75rem; width: 100%; min-width: 0; white-space: normal; }
+.comparator-alternatives h3 { font-size: 1rem; margin: 1rem 0; }
+.comparator-alternatives li { overflow-wrap: anywhere; }
+@media (max-width: 767.98px) {
+    .comparator-alternatives { width: 100%; padding: .5rem; }
+    .comparator-details { min-width: 0; }
+    .comparator-alternatives .mobile-data-record { overflow-wrap: anywhere; }
+}
+
+.comparator-alternatives .data-table-wrapper { max-width: 100%; }

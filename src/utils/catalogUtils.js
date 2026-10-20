@@ -47,6 +47,28 @@ export function getProductChoiceLabel(product, products, categories = [], produc
     return `${context} · ${line?.name || 'Sin línea'} · ${product.unit || 'Unidad pendiente'}${product.active === false ? ' · Inactivo' : ''}`;
 }
 
+// Same labels as getProductChoiceLabel, with peer counts computed once per list.
+export function getProductChoiceLabels(products, categories = [], productLines = []) {
+    const entries = products.map(product => {
+        const name = getProductDisplayName(product, categories, productLines);
+        return { product, name, normalized: normalizeText(name) };
+    });
+    const counts = new Map(), categoryCounts = new Map();
+    for (const { product, normalized } of entries) {
+        counts.set(normalized, (counts.get(normalized) || 0) + 1);
+        const key = JSON.stringify([normalized, String(product.categoryId)]);
+        categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
+    }
+    return new Map(entries.map(({ product, name, normalized }) => {
+        if (counts.get(normalized) < 2) return [product.id, name];
+        const category = categories.find(entry => String(entry.id) === String(product.categoryId));
+        const context = `${name} · ${category?.name || 'Sin categoría'}`;
+        if (categoryCounts.get(JSON.stringify([normalized, String(product.categoryId)])) < 2) return [product.id, context];
+        const line = productLines.find(entry => String(entry.id) === String(product.lineId) && String(entry.categoryId) === String(product.categoryId));
+        return [product.id, `${context} · ${line?.name || 'Sin línea'} · ${product.unit || 'Unidad pendiente'}${product.active === false ? ' · Inactivo' : ''}`];
+    }));
+}
+
 export function productNameHasDisplayPrefix(name, product, categories = [], productLines = []) {
     const prefix = getProductDisplayPrefix(product, categories, productLines);
     if (!prefix) return false;

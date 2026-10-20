@@ -98,7 +98,7 @@ test("las páginas y paneles renderizan con datos migrados y costos configurados
         assert.match(dirtySection, /Guarda los cambios/);
         const { default: Comparator } = await server.ssrLoadModule("/src/pages/ProcurementComparator.jsx");
         const noPriceHtml = renderToString(React.createElement(CatalogContext.Provider, { value: catalog }, React.createElement(ProcurementContext.Provider, { value: noCostContext }, React.createElement(Comparator))));
-        for (const expected of ["Base Fabuloso", "Sin costo registrado", "Sin costo comparable", "Sin origen del costo"]) assert.ok(noPriceHtml.includes(expected), expected);
+        for (const expected of ["Fabuloso", "Sin alternativa comparable confirmada", "relacionadas o pendientes"]) assert.ok(noPriceHtml.includes(expected), expected);
         assert.ok(!noPriceHtml.includes("NaN") && !noPriceHtml.includes("Infinity") && !noPriceHtml.includes("$0.00"));
         const { default: History } = await server.ssrLoadModule("/src/components/CostHistoryModal.jsx");
         const emptyHistory = render(History, { title: "Base Fabuloso", observations: [] });
