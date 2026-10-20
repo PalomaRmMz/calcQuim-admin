@@ -1,0 +1,34 @@
+.sale-detail-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid #e5eaf2; }
+.sale-detail-eyebrow { font-size: 10px; letter-spacing: .1em; font-weight: 700; color: #637ea5; }
+.sale-detail-header .MuiDialogTitle-root { padding: 4px 0 0; font-size: 21px; font-weight: 700; }
+.sale-detail-header .MuiDialogTitle-root span { display: inline-block; margin-left: 8px; color: #3565af; background: #eaf2ff; padding: 4px 8px; border-radius: 7px; font-size: 14px; vertical-align: middle; }
+.sale-detail-close { border: 0; background: #f3f6fa; color: #64748b; border-radius: 9px; width: 36px; height: 36px; font-size: 25px; flex-shrink: 0; }
+.sale-detail-close:hover { background: #e5eaf2; }
+.sale-detail .sale-detail-body { padding: 20px 24px; background: #f7f9fc; }
+.sale-detail-meta { display: grid; grid-template-columns: 1.5fr 1fr .6fr; gap: 16px; margin: 0 0 20px; }
+.sale-detail-meta dt { font-size: 12px; color: #718096; font-weight: 500; margin-bottom: 5px; }
+.sale-detail-meta dd { margin: 0; font-size: 14px; font-weight: 600; }
+.sale-detail-table { border: 1px solid #e5eaf2; border-radius: 10px; background: white; }
+.sale-detail-table .table { margin: 0; font-size: 14px; }
+.sale-detail-table th { background: #eef3fa; color: #63748d; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; padding: 10px 12px; white-space: nowrap; }
+.sale-detail-table td { padding: 10px 12px; border-color: #edf1f6; }
+.sale-detail-table td:first-child { min-width: 160px; font-weight: 600; }
+.sale-detail-table td:last-child, .sale-detail-table th:last-child { text-align: right; font-weight: 700; }
+.sale-detail-table tr:last-child td { border-bottom: 0; }
+.sale-detail-table .sale-detail-group th { text-align: left; text-transform: none; letter-spacing: normal; font-size: 13px; padding: 5px 10px; }
+.sale-detail-discount { display: block; color: #248455; font-size: 11px; font-weight: 500; margin-top: 3px; }
+.sale-detail-notes { margin-top: 18px; padding: 12px 14px; border-left: 3px solid #cad9ef; background: white; border-radius: 0 8px 8px 0; }
+.sale-detail-notes h3 { font-size: 12px; font-weight: 700; margin: 0 0 6px; }
+.sale-detail-notes p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: 13px; color: #64748b; }
+.sale-detail .sale-detail-footer { padding: 16px 24px; border-top: 1px solid #e5eaf2; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.sale-detail-footer > div { display: flex; flex-direction: column; }
+.sale-detail-footer span { font-size: 12px; color: #637ea5; }
+.sale-detail-footer small { margin-left: 6px; font-size: 10px; }
+.sale-detail-footer strong { font-size: 26px; color: #1e4da1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.sale-detail-footer .MuiButton-root { text-transform: none; border-radius: 8px; padding: 8px 18px; }
+@media (max-width: 600px) {
+    .sale-detail.MuiDialog-paper { margin: 12px; width: calc(100% - 24px); max-height: calc(100% - 24px); }
+    .sale-detail-header, .sale-detail .sale-detail-body, .sale-detail .sale-detail-footer { padding: 16px; }
+    .sale-detail-meta { grid-template-columns: 1fr 1fr; gap: 12px; }
+    .sale-detail-header .MuiDialogTitle-root { font-size: 18px; }
+}

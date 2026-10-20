@@ -1,0 +1,80 @@
+   /* ESTILOS MAESTROS / GLOBALES */
+
+   * {
+       box-sizing: border-box;
+   }
+
+   html,
+   body,
+   #root {
+       margin: 0;
+       min-height: 100%;
+   }
+
+   body {
+       margin: 0;
+
+       background-color: #f4f7fb;
+       color: #0f172a;
+       font-family:
+           Inter,
+           system-ui,
+           -apple-system,
+           BlinkMacSystemFont,
+           "Segoe UI",
+           sans-serif;
+   }
+
+   button,
+   input,
+   select {
+       font-family: inherit;
+   }
+
+
+   /*    LAYOUT GENERAL */
+
+   .app-layout {
+       min-height: 100vh;
+   }
+
+   .main-content {
+       min-height: 100vh;
+       margin-left: 280px;
+       padding: 28px;
+       transition:
+           margin-left 0.25s ease;
+   }
+
+   .main-content-expanded {
+       margin-left: 88px;
+   }
+
+
+   /* TABLET / LAPTOP PEQUEÑA */
+
+   @media (max-width: 991.98px) {
+
+       .main-content,
+       .main-content-expanded {
+           margin-left: 0;
+       }
+   }
+
+
+   /* TABLET VERTICAL */
+
+   @media (max-width: 767.98px) {
+       .main-content {
+           padding: 18px;
+       }
+   }
+
+
+   /* MÓVIL */
+
+   @media (max-width: 575.98px) {
+       .main-content {
+           padding: 14px;
+       }
+   }

@@ -1,0 +1,8 @@
+.data-inventory { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; padding: 20px; margin: 20px 0; background: var(--cq-surface-subtle); border-radius: var(--cq-radius-md); }
+.data-inventory strong { display: block; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.data-inventory span { font-size: 13px; color: var(--cq-muted); }
+.data-danger-zone { margin-top: 36px; padding: 24px; border: 1px solid #e9d3d3; border-left: 4px solid var(--cq-danger); border-radius: var(--cq-radius-md); background: #fffafa; }
+.data-danger-zone h2 { font-size: 18px; font-weight: 600; color: var(--cq-text); }
+.data-danger-zone p { color: #5c4850; max-width: 80ch; font-size: 14px; }
+@media (max-width: 1100px) { .data-inventory { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .data-inventory { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px; } .data-danger-zone { padding: 18px; } }

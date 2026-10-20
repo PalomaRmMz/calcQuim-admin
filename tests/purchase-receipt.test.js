@@ -1,0 +1,40 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { savePurchase, saveSupply } from '../src/services/procurementDomain.js';
+import { receiptValid, prepareReceiptPhoto, RECEIPT_MAX_CHARS } from '../src/services/purchaseReceipt.js';
+import { assertProcurementValid } from '../src/services/procurementStorage.js';
+import { collectRawBackup } from '../src/services/rawBackup.js';
+import { prepareBackupImport } from '../src/services/backupImport.js';
+import { STORAGE_KEYS } from '../src/services/catalogStorage.js';
+import { BUSINESS_STORAGE_KEYS } from '../src/services/dataReset.js';
+
+const photo = { name: 'ticket.jpg', dataUrl: 'data:image/jpeg;base64,AA==' };
+test('ticket opcional: adjuntar, conservar al editar, reemplazar y quitar sin perder versiones', () => {
+    const products = [{ id: 1, name: 'Lavanda', unit: 'litro', active: true }];
+    let data = { version: 1, suppliers: [{ id: 's', name: 'Proveedor', active: true }], supplyItems: [], purchases: [], supplierPrices: [] };
+    data = saveSupply(data, { name: 'Lavanda', supplierId: 's', outputProductId: 1, sourcingType: 'READY_TO_USE', purchaseUnit: 'litro' }, products);
+    const input = { supplierId: 's', date: '2026-01-01', items: [{ supplyItemId: data.supplyItems[0].id, quantity: 1, costMode: 'total', cost: 70 }] };
+    data = savePurchase(data, input, products);
+    assert.equal(data.purchases[0].receipt, undefined);
+    const id = data.purchases[0].id;
+    data = savePurchase(data, { ...input, receipt: photo }, products, id);
+    data = savePurchase(data, input, products, id);
+    assert.deepEqual(data.purchases[0].receipt, photo);
+    data = savePurchase(data, { ...input, receipt: { ...photo, name: 'nuevo.jpg' } }, products, id);
+    assert.deepEqual(data.purchases[0].revisions.at(-1).receipt, photo);
+    data = savePurchase(data, { ...input, receipt: null }, products, id);
+    assert.equal(data.purchases[0].receipt, null);
+    assert.equal(data.purchases[0].revisions.at(-1).receipt.name, 'nuevo.jpg');
+    assertProcurementValid(data);
+    const storageValues = Object.fromEntries(BUSINESS_STORAGE_KEYS.map(key => [key, null]));
+    storageValues[STORAGE_KEYS.procurement] = JSON.stringify(data);
+    const backup = collectRawBackup({ getItem: key => storageValues[key] ?? null });
+    assert.equal(prepareBackupImport(JSON.stringify(backup)).values[STORAGE_KEYS.procurement], storageValues[STORAGE_KEYS.procurement]);
+});
+test('rechaza fotos inválidas, contenido ejecutable, tamaño excesivo y formatos no admitidos', async () => {
+    assert.equal(receiptValid(null), true);
+    assert.equal(receiptValid(photo), true);
+    for (const dataUrl of ['https://example.com/image.jpg', 'data:image/svg+xml;base64,AA==', 'data:image/jpeg;base64,' + 'A'.repeat(RECEIPT_MAX_CHARS)]) assert.equal(receiptValid({ ...photo, dataUrl }), false);
+    await assert.rejects(prepareReceiptPhoto({ type: 'application/pdf', size: 10 }), /JPG/);
+    await assert.rejects(prepareReceiptPhoto({ type: 'image/jpeg', size: 16 * 1024 * 1024 }), /15 MB/);
+});

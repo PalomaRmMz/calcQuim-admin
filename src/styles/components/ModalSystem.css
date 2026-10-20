@@ -1,0 +1,33 @@
+/* Shared visual foundation for every application dialog. */
+.app-dialog { --dialog-border: var(--cq-border); --dialog-muted: var(--cq-muted); --dialog-surface: var(--cq-surface-subtle); }
+.app-dialog .MuiDialog-paper { border-radius: var(--cq-radius-lg); color: #25334a; box-shadow: var(--cq-shadow-dialog); }
+.app-dialog .modal-content { border: 0; border-radius: inherit; min-height: 0; overflow: hidden; }
+.app-dialog .modal-content > form { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.app-dialog :is(.modal-header, .sale-modal-header, .sale-detail-header) { padding: 16px 20px; border-bottom: 1px solid var(--dialog-border); background: white; flex-shrink: 0; }
+.app-dialog :is(.modal-title, .MuiDialogTitle-root) { font-size: 20px; font-weight: 700; line-height: 1.4; margin: 0; }
+.app-dialog .MuiDialog-paper > .MuiDialogTitle-root { padding: 16px 20px; border-bottom: 1px solid var(--dialog-border); }
+.app-dialog :is(.modal-body, .MuiDialogContent-root) { padding: 16px 20px; background: var(--dialog-surface); overflow-y: auto; min-height: 0; }
+.app-dialog :is(.modal-footer, .MuiDialogActions-root) { padding: 12px 20px; background: white; border-top: 1px solid var(--dialog-border); display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+.app-dialog :is(.modal-footer .btn, .MuiDialogActions-root .MuiButton-root) { margin: 0; border-radius: 8px; min-height: 38px; padding: 7px 16px; font-size: 14px; font-weight: 600; text-transform: none; box-shadow: none; }
+.app-dialog .modal-footer .btn-light { background: transparent; border-color: transparent; color: var(--dialog-muted); }
+.app-dialog .modal-footer .btn-primary { background: #1976d2; border-color: #1976d2; }
+.app-dialog .modal-footer .btn-primary:hover { background: #1565c0; border-color: #1565c0; }
+.app-dialog .form-label { font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+.app-dialog :is(.form-control, .form-select) { font-size: 14px; border-radius: var(--cq-radius-sm); border-color: var(--cq-border); min-height: 38px; }
+.app-dialog .form-check-label { font-size: 14px; }
+.app-dialog .MuiOutlinedInput-root { border-radius: 8px; background: white; }
+.app-dialog .alert { font-size: 13px; border-radius: 8px; padding: 10px 12px; }
+.app-dialog .btn-close { padding: 10px; margin: 0; width: 16px; height: 16px; border-radius: 8px; background-size: 12px; opacity: .6; }
+.app-dialog .btn-close:hover { background-color: #eef2f7; opacity: 1; }
+.app-dialog :is(.sale-close, .sale-detail-close) { width: 36px; height: 36px; border-radius: 8px; background-color: #f3f6fa; color: var(--dialog-muted); }
+.app-dialog .form-section-title, .app-dialog .sale-modal-body > h3.h6:not(:first-child) { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--cq-border); }
+.app-dialog .sale-section > h3 { font-size: 16px; font-weight: 600; }
+.app-dialog .form-errors { flex-shrink: 1; min-height: 0; max-height: 140px; overflow-y: auto; background: #fff5f5; }
+.app-dialog .form-errors ul { padding-left: 20px; margin: 0; }
+.app-dialog .MuiInputBase-root { font-size: 14px; }
+.app-dialog .MuiInputLabel-root { font-size: 14px; }
+@media (max-width: 600px) {
+    .app-dialog .MuiDialog-paper { margin: 12px; width: calc(100% - 24px); max-height: calc(100% - 24px); }
+    .app-dialog :is(.modal-header, .sale-modal-header, .sale-detail-header, .modal-body, .MuiDialogContent-root, .modal-footer, .MuiDialogActions-root) { padding: 12px 14px; }
+    .app-dialog :is(.modal-title, .MuiDialogTitle-root) { font-size: 18px; }
+}

@@ -1,0 +1,79 @@
+.summary-card {
+    min-height: 100px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px;
+    border: 1px solid rgba(15, 23, 42, 0.03);
+    border-radius: var(--cq-radius-lg);
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+.summary-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 7px 20px rgba(15, 23, 42, 0.07);
+}
+
+.summary-card h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 26px;
+    font-weight: 600;
+}
+
+.summary-card p {
+    margin: 3px 0 0;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+
+/* ICONO */
+
+.summary-icon {
+    width: 54px;
+    height: 54px;
+    min-width: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    font-size: 22px;
+}
+
+
+/* Metrics use one neutral palette; semantic states remain in StatusBadge. */
+.summary-card .summary-icon { background: var(--cq-surface-subtle); color: #526b8a; width: 44px; height: 44px; min-width: 44px; border-radius: var(--cq-radius-sm); font-size: 19px; }
+
+/* TABLET */
+
+@media (max-width: 767.98px) {
+    .summary-card {
+        min-height: 100px;
+    }
+}
+
+
+/* MÓVIL */
+
+@media (max-width: 575.98px) {
+    .summary-column { width: 50%; }
+    .summary-card {
+        min-height: 100px;
+        padding: 14px;
+        gap: 8px;
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .summary-card h3 {
+        font-size: 23px;
+    }
+
+    .summary-card .summary-icon { display: none; }
+}

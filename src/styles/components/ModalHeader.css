@@ -1,0 +1,11 @@
+.app-dialog .app-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid #e5eaf2; background: #fff; flex-shrink: 0; }
+.app-dialog .app-modal-heading { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.app-dialog .app-modal-heading .MuiDialogTitle-root { padding: 5px 0; margin: 0; font-size: 20px; font-weight: 700; line-height: 1.4; }
+.app-dialog .app-modal-heading p { margin: 3px 0 0; color: #64748b; font-size: 14px; }
+.app-dialog .app-modal-close { flex: 0 0 44px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: #f3f6fa; color: #64748b; cursor: pointer; }
+.app-dialog .app-modal-close:hover { background: #e5ebf3; color: #17263a; }
+.app-dialog .app-modal-close:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+@media (max-width: 600px) {
+    .app-dialog .app-modal-header { padding: 12px 14px; gap: 12px; }
+    .app-dialog .app-modal-heading .MuiDialogTitle-root { font-size: 18px; }
+}

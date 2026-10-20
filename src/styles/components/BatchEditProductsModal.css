@@ -1,0 +1,6 @@
+.batch-products-list {
+    max-height: none;
+}
+
+.batch-edit-option { padding: 14px 0; border-bottom: 1px solid var(--cq-border); }
+.batch-products-list .form-check { padding-left: 32px; border-radius: var(--cq-radius-sm); }

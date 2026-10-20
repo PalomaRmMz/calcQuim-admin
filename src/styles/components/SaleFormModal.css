@@ -1,0 +1,59 @@
+.sale-modal-form { display: flex; flex-direction: column; overflow: hidden; min-height: 0; color: #25334a; }
+.sale-modal-header { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid #e8edf4; }
+.sale-modal-header .MuiDialogTitle-root { padding: 0; font-size: 22px; font-weight: 700; }
+.sale-modal-header p { margin: 3px 0 0; color: #718096; font-size: 14px; }
+.sale-close, .sale-remove { border: 0; background: transparent; display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--cq-radius-sm); flex-shrink: 0; }
+.sale-close { margin-left: auto; color: #64748b; }
+.sale-close:hover { background: #eef2f7; }
+.sale-modal .sale-modal-body { padding: 14px 20px; background: var(--cq-surface-subtle); }
+.sale-section { padding: 8px; border: 0; border-radius: var(--cq-radius-md); background: var(--cq-surface); }
+.sale-modal .form-label { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+.sale-modal .form-control, .sale-modal .form-select { border-color: #dce3ed; border-radius: 8px; font-size: 14px; min-height: 38px; }
+.sale-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.sale-section-heading h3 { font-size: 15px; font-weight: 700; margin: 0; }
+.sale-section-heading > span { font-size: 12px; color: #3565af; background: #eef4ff; padding: 4px 10px; border-radius: 20px; white-space: nowrap; }
+.sale-modal .MuiOutlinedInput-root { border-radius: 10px; }
+.sale-items { border: 1px solid #e8edf4; border-radius: 10px; }
+.sale-items .table { margin: 0; font-size: 14px; }
+.sale-items th { background: var(--cq-surface-subtle); color: #718096; font-size: 12px; text-transform: none; letter-spacing: normal; padding: 8px; }
+.sale-items td { padding: 10px 12px; border-color: #edf1f6; }
+.sale-entry-checkbox { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 13px; cursor: pointer; min-height: 38px; }
+.sale-entry-checkbox .form-check-input { margin: 0; flex-shrink: 0; }
+.sale-items td:first-child { width: 100%; }
+.sale-items td:last-child { padding-left: 4px; padding-right: 6px; }
+.sale-wholesale { display: block; margin-top: 3px; font-size: 11px; font-weight: 500; color: #248455; }
+.sale-items .sale-group-heading th { background: #eaf2ff; color: #3565af; font-size: 13px; font-weight: 700; text-transform: none; letter-spacing: normal; padding: 5px 10px; }
+.sale-items tr:last-child td { border-bottom: 0; }
+.sale-items td:first-child { font-weight: 600; min-width: 150px; }
+.sale-items td:first-child small { font-weight: 400; font-size: 12px; margin-top: 4px; }
+.sale-items td:nth-child(4) { font-weight: 700; }
+.sale-items .input-group-text { background: var(--cq-surface-subtle); color: #718096; font-size: 12px; border-color: #dce3ed; }
+.sale-remove { color: #a35a65; }
+.sale-remove:hover { color: #c52942; background: #fff0f2; }
+.sale-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18px 12px; border: 1px dashed #dce3ed; border-radius: 12px; background: #fbfcfe; }
+.sale-empty > svg { color: #91a9ce; font-size: 26px; margin-bottom: 14px; }
+.sale-empty strong { font-size: 14px; }
+.sale-empty p { color: #718096; font-size: 13px; margin: 6px 0 0; }
+.sale-modal .sale-modal-actions { padding: 10px 20px; border-top: 1px solid #e8edf4; gap: 8px; }
+.sale-modal-actions .MuiButton-root { text-transform: none; border-radius: var(--cq-radius-sm); padding: 9px 20px; font-weight: 600; }
+.sale-notes { margin-top: 12px; font-size: 13px; }
+.sale-notes summary { cursor: pointer; color: #637ea5; font-weight: 600; }
+.sale-notes > div { margin-top: 8px; }
+.sale-footer-total { margin-right: auto; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.sale-footer-total span { font-size: 13px; color: #637ea5; }
+.sale-footer-total strong { font-size: 22px; color: #1e4da1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.sale-modal-actions { flex-shrink: 0; flex-wrap: wrap; }
+.sale-items .form-control { padding-top: 3px; padding-bottom: 3px; }
+@media (max-width: 600px) {
+    .sale-modal.MuiDialog-paper { margin: 12px; width: calc(100% - 24px); max-height: calc(100% - 24px); }
+    .sale-modal-header { padding: 18px 16px; gap: 10px; }
+    .sale-modal-header .MuiDialogTitle-root { font-size: 20px; }
+    .sale-modal-header p { font-size: 12px; }
+    .sale-modal .sale-modal-body { padding: 16px; }
+    .sale-section { padding: 16px; }
+    .sale-modal .sale-modal-actions { padding: 14px 16px; }
+    .app-dialog .sale-footer-total { flex-basis: 100%; margin-right: 0; }
+}
+
+.app-dialog .sale-footer-total { padding: 8px 14px; background: var(--cq-surface-selected); border-radius: var(--cq-radius-sm); }
+.app-dialog .sale-section-heading > span { background: none; color: var(--cq-muted); padding: 0; }

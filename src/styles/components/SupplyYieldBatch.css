@@ -1,0 +1,11 @@
+.yield-batch { display: grid; gap: 16px; }
+.yield-batch h3 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
+.yield-batch-results { max-height: 220px; overflow-y: auto; }
+.yield-batch-choice { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--cq-border); cursor: pointer; }
+.yield-batch-choice input { align-self: flex-start; margin-top: 4px; }
+.yield-batch-choice span, .yield-batch-identity { display: grid; gap: 4px; }
+.yield-batch .classification-label { width: fit-content; }
+.yield-batch small { color: var(--cq-muted); }
+.yield-batch-selected { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--cq-border); }
+.yield-batch-selected > .btn { align-self: start; }
+.yield-batch-selected > .more-options { grid-column: 1 / -1; }

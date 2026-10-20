@@ -1,0 +1,48 @@
+.content-panel {
+    padding: 22px;
+    border: 1px solid var(--cq-border);
+    border-radius: var(--cq-radius-lg);
+    background-color: var(--cq-surface);
+    box-shadow: var(--cq-shadow-card);
+}
+
+
+/* CABECERA */
+
+.content-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.content-panel-header h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.content-panel-header p {
+    margin: 4px 0 0;
+    color: #64748b;
+    font-size: 13px;
+}
+
+
+/* RESPONSIVE */
+
+@media (max-width: 767.98px) {
+    .content-panel {
+        padding: 16px;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .content-panel-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}

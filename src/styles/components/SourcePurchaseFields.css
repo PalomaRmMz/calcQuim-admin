@@ -1,0 +1,32 @@
+.source-purchase-fields,
+.source-yield-explained {
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fafbfd;
+}
+
+.source-purchase-heading {
+    margin: 0 0 14px;
+    color: #334155;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.source-purchase-preview {
+    margin: 12px 0 0;
+    color: #475569;
+    font-size: 13px;
+}
+
+.source-purchase-preview span {
+    display: block;
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.source-yield-explained .form-text {
+    margin: 0 0 12px;
+}

@@ -1,0 +1,249 @@
+.data-table-wrapper {
+    width: 100%;
+    overflow: hidden;
+    border-radius: 12px;
+}
+
+.data-table-paper {
+    border: 1px solid var(--cq-border) !important;
+    border-radius: 12px !important;
+    overflow: hidden;
+    box-shadow: none !important;
+}
+
+
+/* ENCABEZADOS */
+
+.data-table-header-cell {
+    background-color: var(--cq-surface-subtle) !important;
+    color: #64748b !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+
+/* CELDAS */
+
+.data-table-body-cell {
+    color: #475569 !important;
+    font-size: 14px !important;
+}
+
+.data-table-row {
+    transition:
+        background-color 0.15s ease;
+}
+
+.data-table-row:hover td {
+    background-color: var(--cq-surface-hover) !important;
+}
+
+
+/* TEXTO DESTACADO */
+
+.table-text-primary {
+    color: #0f172a;
+    font-weight: 600;
+}
+
+
+/* TEXTO MUTE */
+
+.table-text-muted {
+    color: var(--cq-muted);
+    font-weight: 600;
+}
+
+/* DINERO */
+
+.table-money {
+    color: #0f172a;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+
+/* BADGES GENÉRICOS */
+
+.table-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+
+/* AZUL */
+
+.table-badge-blue {
+    background-color: #eaf4ff;
+    color: #2574c7;
+}
+
+
+/* VERDE */
+
+.table-badge-green {
+    background-color: #e8f8f0;
+    color: var(--cq-success);
+}
+
+
+/* AMARILLO */
+
+.table-badge-yellow {
+    background-color: #fff5d8;
+    color: var(--cq-warning);
+}
+
+
+/* MORADO */
+
+.table-badge-purple {
+    background-color: #f1eaff;
+    color: #7c3aed;
+}
+
+
+/* ROJO */
+
+.table-badge-red {
+    background-color: #ffeded;
+    color: var(--cq-danger);
+}
+
+
+/* GRIS */
+
+.table-badge-gray {
+    background-color: #f1f5f9;
+    color: var(--cq-muted);
+}
+
+
+/* ESTADOS */
+
+.table-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.table-status-active {
+    background-color: #e8f8f0;
+    color: var(--cq-success);
+}
+
+.table-status-inactive {
+    background-color: #f1f5f9;
+    color: var(--cq-muted);
+}
+
+.table-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: #17b568;
+}
+
+.table-status-dot.inactive {
+    background-color: var(--cq-muted);
+}
+
+
+/* ACCIONES */
+
+.table-actions {
+    display: flex;
+    align-items: center;
+
+    gap: 7px;
+}
+
+.table-action-button {
+    width: 35px;
+    height: 35px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--cq-radius-sm);
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        transform 0.15s ease;
+}
+
+.table-action-button:hover {
+    transform: none;
+}
+
+
+/* EDITAR */
+
+.table-action-button.edit {
+    background-color: #eaf4ff;
+    color: var(--cq-muted);
+}
+
+.table-action-button.edit:hover {
+    background-color: #d9ebff;
+}
+
+
+/* ELIMINAR */
+
+.table-action-button.delete {
+    background-color: #ffeded;
+    color: var(--cq-danger);
+}
+
+.table-action-button.delete:hover {
+    background-color: #ffdddd;
+}
+
+
+/* RESPONSIVE */
+
+@media (max-width: 767.98px) {
+    .data-table-body-cell {
+        font-size: 13px !important;
+    }
+
+    .table-action-button {
+        width: 32px;
+        height: 32px;
+    }
+}
+.data-table-body-cell { border-bottom-color: #e8edf3 !important; padding-top: 12px !important; padding-bottom: 12px !important; }
+.data-table-row.Mui-selected td { background: var(--cq-surface-selected) !important; }
+.table-money { font-variant-numeric: tabular-nums; font-weight: 600; }
+.table-action-button.delete { background: transparent; }
+.table-action-button.edit { background: var(--cq-surface-subtle); }
+
+.mobile-data-table { min-width: 0; }
+.mobile-data-toolbar, .mobile-data-pagination { display: grid; gap: 8px; margin: 12px 0; }
+.mobile-data-toolbar label, .mobile-data-pagination label { font-weight: 600; }
+.mobile-data-records { display: grid; gap: 14px; }
+.mobile-data-record { padding: 16px; border: 1px solid var(--cq-border); border-radius: 12px; background: var(--cq-surface, #fff); overflow-wrap: anywhere; min-width: 0; }
+.mobile-data-record h3 { font-size: 1rem; font-weight: 700; line-height: 1.5; margin: 0 0 12px; }
+.mobile-data-fields { margin: 0; display: grid; gap: 12px; }
+.mobile-data-fields > div { min-width: 0; }
+.mobile-data-fields dt { color: var(--cq-muted); font-size: .875rem; font-weight: 600; }
+.mobile-data-fields dd { margin: 3px 0 0; color: var(--cq-text, #0f172a); }
+.mobile-data-record > details { margin-top: 14px; border-top: 1px solid var(--cq-border); padding-top: 12px; }
+.mobile-data-record summary { font-weight: 600; cursor: pointer; }
+.mobile-data-record details[open] > summary { margin-bottom: 12px; }
+.mobile-data-pagination > div { display: flex; justify-content: space-between; gap: 12px; }
+.mobile-data-pagination button, .mobile-data-record button { min-height: 44px; }
+.mobile-data-pagination p { margin: 4px 0; }
