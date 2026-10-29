@@ -1,0 +1,2 @@
+export const inventoryStatus={unknown:'Sin determinar',estimated:'Aproximada registrada',calculated:'Calculada desde una estimación'};
+export const inventoryKinds={estimate:'Existencia aproximada actual',prepared:'Preparación de producto',receipt:'Recepción de terminado',adjustment:'Ajuste positivo o negativo',waste:'Merma',return:'Devolución física',correction:'Corrección compensatoria',sale:'Salida por venta',reversal:'Compensación'};

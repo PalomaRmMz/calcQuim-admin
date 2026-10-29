@@ -6,6 +6,7 @@ import { runPgTool,listPgArchive,verifyPgArchive } from '../src/db/pgTools.mjs';
 import { readDataset } from '../src/repositories/dataset.mjs';
 import { canonical } from '../src/services/dataset.mjs';
 import { sha256,reconcileRelationalColumns } from '../src/services/reconciliation.mjs';
+import { readInventory,inventorySnapshot } from '../src/repositories/inventory.mjs';
 const args=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(0,i),a.slice(i+1)];}));
 let pool;
 try{
@@ -32,6 +33,7 @@ try{
     await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');await c.query(`SET LOCAL search_path TO ${schema},pg_catalog`);
     const restored=await readDataset(c,false,'operational');
     if(sha256(canonical(restored))!==manifest.snapshotSha256)throw new Error('RESTORED_SNAPSHOT_MISMATCH');
+    if(manifest.inventorySha256&&sha256(canonical(inventorySnapshot(await readInventory(c,restored.data),manifest.inventorySnapshotVersion??1)))!==manifest.inventorySha256)throw new Error('RESTORED_INVENTORY_MISMATCH');
     relational=await reconcileRelationalColumns(c,restored.data);if(!relational.equal)throw new Error('RESTORED_RELATIONS_MISMATCH');
     await c.query('ROLLBACK');
   }finally{c.release();}

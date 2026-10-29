@@ -635,7 +635,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{}"
+          "raw": "{\"inventoryReturn\":\"not_returned\",\"reason\":\"Anulacion sintetica sin retorno fisico\"}"
         }
       },
       "event": [

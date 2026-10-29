@@ -25,6 +25,7 @@ export function dataRouter(service) {
   });
   const {run,read}=createDataController(service);
   r.get('/dataset',read);
+  r.get('/inventory',async(_req,res)=>res.json(await service.inventory()));
   r.post('/commands/:name',async(req,res)=>run(req,res,req.params.name,req.body.args));
   r.get('/analytics/:kind',async(req,res)=>{
     const {data}=await service.read();
@@ -59,7 +60,7 @@ export function dataRouter(service) {
   for(const resource of ['purchases','sales']) r.post(`/${resource}/:id/void`,async(req,res)=>{
     const s=await service.read();const row=(s.data[resource]??s.data.procurement[resource]).find(x=>String(x.id)===req.params.id);
     if(!row)throw new ApiError(404,'NOT_FOUND','Registro no encontrado.');
-    await run(req,res,resource==='sales'?'voidSale':'voidPurchase',[row.id]);
+    await run(req,res,resource==='sales'?'voidSale':'voidPurchase',resource==='sales'?[row.id,req.body]:[row.id]);
   });
   return r;
 }

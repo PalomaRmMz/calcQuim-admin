@@ -7,6 +7,7 @@ import "../styles/layout/Sidebar.css";
 const menuItems = [
     { label: "Productos", icon: faBox, path: "/productos", children: [["Productos", "/productos"], ["Categorías", "/productos/categorias"], ["Líneas", "/productos/lineas"], ["Grupos de precio", "/productos/grupos"]] },
     { label: "Ventas", icon: faCartShopping, path: "/ventas" },
+    { label: "Inventario", icon: faBox, path: "/inventario" },
     { label: "Compras", icon: faCartShopping, path: "/compras", children: [["Historial", "/compras"], ["Abastecimiento", "/compras/abastecimiento"], ["Comparador", "/compras/comparador"], ["Proveedores", "/compras/proveedores"]] },
     { label: "Administración", icon: faGear, path: "/administracion", children: [["Datos y respaldos", "/administracion/datos"]] },
     { label: "Reportes", icon: faChartColumn, path: "/reportes" },

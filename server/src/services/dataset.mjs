@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { schemaName } from '../db/migrate.mjs';
 import { readDataset, writeDataset } from '../repositories/dataset.mjs';
 import { ApiError, executeCommand } from './commands.mjs';
+import { inventoryAvailable,readInventory,inventoryPolicy } from '../repositories/inventory.mjs';
+import { inventoryCommands,executeInventoryCommand,syncInventory } from './inventory.mjs';
 
 // Serialización canónica para claves de idempotencia, independiente del orden de propiedades JSON.
 export function canonical(value) {
@@ -26,7 +28,8 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
     finally {c.release();}
   }
   return {
-    read:()=>transaction(c=>read(c),true),
+    read:()=>transaction(async c=>({...await read(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false}),true),
+    inventory:()=>transaction(async c=>readInventory(c,(await read(c)).data),true),
     async command({name,args,revision,generation,requestKey}) {
       if (!Number.isSafeInteger(revision)||typeof generation!=='string'||!requestKey||!/^[a-zA-Z0-9:_-]{8,150}$/.test(requestKey)) throw new ApiError(400,'INVALID_PRECONDITION','Se requieren revisión, generación y clave de idempotencia.');
       const hash=createHash('sha256').update(canonical({name,args,generation})).digest('hex');
@@ -36,15 +39,20 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
         if(previous) {
           if(previous.request_hash!==hash) throw new ApiError(409,'IDEMPOTENCY_CONFLICT','La clave ya corresponde a otra operación.');
           // Se devuelve resultado original y estado actual para no regresar la vista a una revisión antigua.
-          return {...current,result:previous.response,replayed:true};
+          return {...current,result:previous.response,replayed:true,inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
         }
         if(current.generation!==generation||current.revision!==revision) throw new ApiError(412,'STALE_DATA','Los datos cambiaron. Recarga antes de guardar.');
         let result;
-        try {result=executeCommand(current.data,current.counters,name,args);}
+        const before=structuredClone(current.data);
+        try {
+          if(inventoryCommands.includes(name))result={ok:true,...await executeInventoryCommand(c,current.data,name,args)};
+          else result=executeCommand(current.data,current.counters,name,args);
+        }
         catch(error) {if(error instanceof ApiError) throw error; throw new ApiError(422,'DOMAIN_VALIDATION',error.message);}
-        await writeDataset(c,current.data,current.counters);
+        if(inventoryCommands.includes(name))await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true');
+        else {await writeDataset(c,current.data,current.counters);await syncInventory(c,before,current.data,name,args);}
         await c.query('INSERT INTO idempotency_requests(request_key,request_hash,response) VALUES($1,$2,$3)',[requestKey,hash,JSON.stringify(result)]);
-        return {...current,revision:current.revision+1,result,replayed:false};
+        return {...current,revision:current.revision+1,result,replayed:false,inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
       });
     },
   };

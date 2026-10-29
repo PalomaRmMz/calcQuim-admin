@@ -1,0 +1,6 @@
+.inventory-product-button { border: 0; background: transparent; padding: 0; font: inherit; text-align: left; cursor: pointer; }
+.inventory-product-button:hover { text-decoration: underline; }
+.inventory-modal-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.inventory-stock-summary { padding: 14px; border: 1px solid var(--cq-border); border-radius: var(--cq-radius-md); background: var(--cq-surface-subtle); }
+.inventory-stock-summary strong { display: block; font-size: 22px; }
+.inventory-product-button:focus-visible { outline: 2px solid var(--cq-primary); outline-offset: 2px; }

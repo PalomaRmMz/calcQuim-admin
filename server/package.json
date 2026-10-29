@@ -26,7 +26,8 @@
     "operational:prepare": "node scripts/rehearse-real.mjs --operational --window-confirmed",
     "test:activation": "node scripts/test-activation.mjs",
     "operational:activate": "node scripts/activate-operational.mjs --window-confirmed",
-    "backup:operational": "node scripts/backup-operational.mjs"
+    "backup:operational": "node scripts/backup-operational.mjs",
+    "test:inventory": "node --test integration/inventory.test.mjs"
   },
   "dependencies": {
     "express": "5.3.0",

@@ -13,6 +13,7 @@ import "./styles/DesignSystem.css";
 import { useCatalog } from "./context/CatalogHooks.js";
 import Feedback from "./components/Feedback";
 import ReportsPage from './pages/ReportsPage';
+import InventoryPage from './pages/InventoryPage';
 
 function App() {
   const { pathname } = useLocation();
@@ -42,6 +43,7 @@ function App() {
 
       <main className={`main-content ${sidebarCollapsed ? "main-content-expanded" : ""}`}>
         <Routes>
+          <Route path="/inventario" element={<><Header title="Inventario aproximado" subtitle="Existencias, movimientos y reposición" onOpenMenu={() => setMobileMenuOpen(true)} /><InventoryPage/></>} />
           <Route path="/" element={<Navigate to="/productos" replace />} />
           <Route path="/compras/:section?" element={<><Header title={sectionTitles[pathname] || 'Compras'} subtitle="Compras · Historial, abastecimiento y proveedores" onOpenMenu={() => setMobileMenuOpen(true)} /><PurchasesModule /></>} />
           <Route path="/compras/historial" element={<Navigate to="/compras" replace />} />

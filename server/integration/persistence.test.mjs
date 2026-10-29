@@ -93,7 +93,7 @@ test('persistencia integral en PostgreSQL real, solo sintéticos',async t=>{
       await assert.rejects(service.command({...request,args:[{...input,payment:'Tarjeta'}]}),{code:'IDEMPOTENCY_CONFLICT'});
       await command('createSale',{...input,items:[{productId:2,unit:'litro',price:20,entryMode:'amount',requestedAmount:170,quantity:10}]});
       assert.equal(state.data.sales[0].folio,'V-00002');assert.equal(state.data.sales[0].total,170);
-      await command('voidSale',state.data.sales[0].id);assert.ok(state.data.sales[0].voidedAt);
+      await command('voidSale',state.data.sales[0].id,{inventoryReturn:'not_returned',reason:'Anulación sintética sin reposición física'});assert.ok(state.data.sales[0].voidedAt);
       const source=state.data.procurement.supplyItems[0];
       const buy={name:'savePurchase',args:[{supplierId:source.supplierId,date:'2026-01-03',items:[{supplyItemId:source.id,quantity:1,cost:20,costMode:'unit'}]}],revision:state.revision,generation:state.generation,requestKey:randomUUID()};
       await Promise.all([service.command(buy),service.command(buy)]);state=await service.read();assert.equal(state.data.procurement.purchases.length,2);

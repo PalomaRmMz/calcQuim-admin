@@ -22,7 +22,7 @@ export async function createOperationalBackup({directory,database,policy={},dump
   await dump(path);await verify(path);
   const bytes=await readFile(path);if(!bytes.length)throw new Error('EMPTY_BACKUP');
   const sha256=hash(bytes);
-  const manifest={database,file,sha256,bytes:bytes.length,createdAt:now.toISOString(),archiveReadable:true,restoreVerified:false,secondaryVerified:false,...(reference.snapshotSha256?{snapshotSha256:reference.snapshotSha256}:{})};
+  const manifest={database,file,sha256,bytes:bytes.length,createdAt:now.toISOString(),archiveReadable:true,restoreVerified:false,secondaryVerified:false,...(reference.snapshotSha256?{snapshotSha256:reference.snapshotSha256}:{}),...(reference.inventorySha256?{inventorySha256:reference.inventorySha256,inventorySnapshotVersion:reference.inventorySnapshotVersion??1}:{})};
   if(policy.secondaryDirectory){
     await mkdir(policy.secondaryDirectory,{recursive:true});
     const destination=join(policy.secondaryDirectory,file);

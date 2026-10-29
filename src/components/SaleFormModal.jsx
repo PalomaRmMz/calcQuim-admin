@@ -17,7 +17,7 @@ const filterProducts = createFilterOptions({
     stringify: (product) => `${product.displayName} ${product.categoryName} ${product.lineName}`,
 });
 
-export default function SaleFormModal({ onClose, onSave }) {
+export default function SaleFormModal({ onClose, onSave,inventoryEnabled=false }) {
     const { products, categories, productLines, priceGroups, getProductPrice, isProductAvailable } = useCatalog();
     const [productSearch, setProductSearch] = useState("");
     const [date, setDate] = useState(localDate);
@@ -25,6 +25,7 @@ export default function SaleFormModal({ onClose, onSave }) {
     const [notes, setNotes] = useState("");
     const [items, setItems] = useState([]);
     const [error, setError] = useState("");
+    const [inventoryScopes,setInventoryScopes]=useState({});
     const available = products.filter((product) => product.active && isProductAvailable(product) && getProductPrice(product) !== null && Number.isFinite(getProductPrice(product)) && getProductPrice(product) >= 0 && (product.priceGroupId == null || priceGroups.some((group) => group.id === product.priceGroupId && group.active)));
     const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
     const displayNameCounts = new Map();
@@ -76,7 +77,8 @@ export default function SaleFormModal({ onClose, onSave }) {
         if (!date || date > localDate()) return setError("Selecciona una fecha válida que no sea futura.");
         if (calculated.some((item) => !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.amount)) || !Number.isFinite(total)) return setError("Todas las cantidades deben ser mayores que cero y válidas.");
         if (items.some((item) => !available.some((product) => product.id === item.productId))) return setError("Un producto ya no está disponible. Retíralo para continuar.");
-        const result = await onSave({ date, payment, notes: notes.trim(), items: calculated.map((item) => ({ ...item, group: productGroups.get(item.productId) || unclassified })), total });
+        const inventory=Object.fromEntries(items.filter(item=>inventoryScopes[item.productId]&&inventoryScopes[item.productId]!=='direct').map(item=>[item.productId,{pendingGroup:true,scope:inventoryScopes[item.productId]}]));
+        const result = await onSave({ date, payment, notes: notes.trim(), items: calculated.map((item) => ({ ...item, group: productGroups.get(item.productId) || unclassified })), total,...(inventoryEnabled?{inventory}:{}) });
         if (!result.ok) return setError(result.message);
         onClose();
     }
@@ -124,7 +126,7 @@ export default function SaleFormModal({ onClose, onSave }) {
                 {items.length > 0 ? <div className="table-responsive sale-items"><table className="table align-middle"><thead><tr><th>Producto</th><th>Vender por</th><th>Valor<RequiredMark /></th><th className="text-end">Importe</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>{groupedItems.map((group) => <tbody key={group.id}>
                     <tr className="sale-group-heading"><th colSpan={5} scope="rowgroup" style={getBadgeStyle(group.colorId) || { backgroundColor: "#f1f3f5", color: "#6c757d" }}>{group.name}</th></tr>
                     {group.items.map((item) => <tr key={item.productId}>
-                    <td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small></td>
+                    <td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small>{inventoryEnabled&&<label className="d-block small">Salida física<select className="form-select form-select-sm" value={inventoryScopes[item.productId]||'direct'} onChange={e=>setInventoryScopes({...inventoryScopes,[item.productId]:e.target.value})}><option value="direct">Este producto</option>{products.find(p=>p.id===item.productId)?.lineId!=null&&<option value="line">Desglosar después por línea</option>}{products.find(p=>p.id===item.productId)?.categoryId!=null&&<option value="category">Desglosar después por categoría</option>}</select></label>}</td>
                     <td>
                         <div className="d-flex flex-nowrap align-items-center gap-3" role="group" aria-label={`Modo de venta de ${item.name}`}>
                             {[{ value: "quantity", label: "Por cantidad" }, { value: "amount", label: "Por monto" }].map((mode) => (

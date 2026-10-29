@@ -2,6 +2,8 @@ import ModalHeader from "../components/ModalHeader";
 import TableActions from "../components/TableActions";
 import PrimaryAction from "../components/PrimaryAction";
 import ConfirmDialog from "../components/ConfirmDialog";
+import InventoryReasonFields from "../components/InventoryReasonFields";
+import { emptyInventoryReason,inventoryReasonPayload } from "../services/inventoryReasons.js";
 import EmptyState from "../components/EmptyState";
 import { useContext, useEffect, useRef, useState } from "react";
 import { PersistenceContext } from '../context/PersistenceContext.js';
@@ -51,6 +53,9 @@ export default function SalesPage() {
     const sortedDetailGroups = [...detailGroups.values()].sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }) || a.id.localeCompare(b.id));
     for (const group of sortedDetailGroups) group.items.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
     const [deleting, setDeleting] = useState(null);
+    const [physicalReturn,setPhysicalReturn]=useState('');
+    const [voidReason,setVoidReason]=useState(emptyInventoryReason);
+    const [voidBaseline,setVoidBaseline]=useState('');
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
     const [notice, setNotice] = useState("");
@@ -84,8 +89,11 @@ export default function SalesPage() {
     }
     async function deleteSale() {
         if (!deleting) return { ok: false, message: "Selecciona una venta." };
-        const result = persistence ? await persistence.command('voidSale',[deleting.id]) : commit(sales => voidSale(sales, deleting.id));
-        if (result.ok) { setSelected(null); setDeleting(null); setNotice("Venta anulada; su historial se conserva."); }
+        if(persistence?.snapshot.inventoryEnabled&&!physicalReturn)return {ok:false,message:'Confirma el destino físico y el motivo de la anulación.'};
+        let metadata={};
+        if(persistence?.snapshot.inventoryEnabled){try{metadata=inventoryReasonPayload(voidReason,'sale_void');}catch(error){return {ok:false,message:error.message};}}
+        const result = persistence ? await persistence.command('voidSale',[deleting.id,...(persistence.snapshot.inventoryEnabled?[{inventoryReturn:physicalReturn,...metadata,baselineTreatment:voidBaseline}]:[])]) : commit(sales => voidSale(sales, deleting.id));
+        if (result.ok) { setSelected(null); setDeleting(null); setPhysicalReturn('');setVoidReason(emptyInventoryReason());setVoidBaseline('');setNotice("Venta anulada; su historial se conserva."); }
         return result;
     }
     if (state.error) return <><Feedback message={state.error} /><Link to="/administracion/datos">Datos y respaldos</Link></>;
@@ -117,8 +125,8 @@ export default function SalesPage() {
             {!sales.length && <EmptyState title="Sin ventas">Registra tu primera venta para comenzar.</EmptyState>}
             <DataTable columns={columns} data={filtered} searchPlaceholder="Buscar folio o método de pago..." initialSorting={[{ id: "date", desc: true }]} />
         </ContentPanel>
-        {creating && <SaleFormModal onClose={() => setCreating(false)} onSave={saveSale} />}
-        {deleting && <ConfirmDialog title="Anular venta" confirmText="Anular" onClose={() => setDeleting(null)} onConfirm={deleteSale}>¿Anular la venta {deleting.folio} por {money(deleting.total)}? Se conservará el historial y se excluirá de los totales.</ConfirmDialog>}
+        {creating && <SaleFormModal inventoryEnabled={!!persistence?.snapshot.inventoryEnabled} onClose={() => setCreating(false)} onSave={saveSale} />}
+        {deleting && <ConfirmDialog title="Anular venta" confirmText="Anular" onClose={() => {setDeleting(null);setPhysicalReturn('');setVoidReason(emptyInventoryReason());setVoidBaseline('');}} onConfirm={deleteSale}>¿Anular la venta {deleting.folio} por {money(deleting.total)}? Se conservará el historial y se excluirá de los totales.{persistence?.snapshot.inventoryEnabled&&<><label className="d-block mt-3">Destino físico<select className="form-select" value={physicalReturn} onChange={e=>setPhysicalReturn(e.target.value)}><option value="">Selecciona explícitamente</option><option value="returned">No salió o regresó físicamente: reponer salida completa</option><option value="not_returned">Permanece fuera, o ya registré la devolución aparte</option></select></label><label className="d-block mt-2">Si la venta es anterior a una estimacion<select className="form-select" value={voidBaseline} onChange={e=>setVoidBaseline(e.target.value)}><option value="">Sin confirmar</option><option value="already_included">El retorno ya estaba incluido: no sumar otra vez</option><option value="apply_now">El retorno debe aplicarse ahora</option></select></label><small className="d-block">Si cada producto requiere un tratamiento distinto, registra las devoluciones por producto en Inventario y anula sin reponer otra vez.</small><InventoryReasonFields context="sale_void" value={voidReason} onChange={setVoidReason} idPrefix="sale-void"/></>}</ConfirmDialog>}
         <Dialog className="app-dialog" open={Boolean(selected)} onClose={() => setSelected(null)} fullWidth maxWidth="md" aria-labelledby="sale-detail-title" PaperProps={{ className: "sale-modal" }}>
             <ModalHeader titleId="sale-detail-title" title={`Detalle de venta · ${selected?.folio || ""}`} onClose={() => setSelected(null)} />
             <DialogContent className="sale-modal-body">{selected && <><section className="sale-section">
