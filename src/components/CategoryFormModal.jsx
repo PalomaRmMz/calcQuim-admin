@@ -11,7 +11,7 @@ function CategoryFormModal({ show, category, onClose, onSave }) {
     const [error, setError] = useState("");
     const isEditing = Boolean(category);
 
-    function handleSubmit(event) {
+    async function handleSubmit(event) {
         event.preventDefault();
         setError("");
 
@@ -20,7 +20,7 @@ function CategoryFormModal({ show, category, onClose, onSave }) {
             return;
         }
 
-        const result = onSave({
+        const result = await onSave({
             name: name.trim(),
             active,
             useAsProductPrefix,

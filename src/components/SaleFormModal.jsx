@@ -70,13 +70,13 @@ export default function SaleFormModal({ onClose, onSave }) {
         setProductSearch("");
     }
 
-    function submit(event) {
+    async function submit(event) {
         event.preventDefault();
         if (!items.length) return setError("Agrega al menos un producto.");
         if (!date || date > localDate()) return setError("Selecciona una fecha válida que no sea futura.");
         if (calculated.some((item) => !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.amount)) || !Number.isFinite(total)) return setError("Todas las cantidades deben ser mayores que cero y válidas.");
         if (items.some((item) => !available.some((product) => product.id === item.productId))) return setError("Un producto ya no está disponible. Retíralo para continuar.");
-        const result = onSave({ date, payment, notes: notes.trim(), items: calculated.map((item) => ({ ...item, group: productGroups.get(item.productId) || unclassified })), total });
+        const result = await onSave({ date, payment, notes: notes.trim(), items: calculated.map((item) => ({ ...item, group: productGroups.get(item.productId) || unclassified })), total });
         if (!result.ok) return setError(result.message);
         onClose();
     }

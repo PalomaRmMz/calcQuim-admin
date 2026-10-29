@@ -18,7 +18,7 @@ export default function SupplierPriceFormModal({ supply, onClose }) {
     const snapshot = supplySnapshot(supply, products.find((p) => p.id === supply.outputProductId));
     const effective = calculateEffectiveCost({ ...form, yield: snapshot.yield, targetUnit: snapshot.productUnitSnapshot || snapshot.yield?.outputUnit });
     const unitCost = numberValue(form.price) !== null && Number(form.price) >= 0 && positive(form.priceQuantity) ? Number(form.price) / Number(form.priceQuantity) : null;
-    function submit(event) { event.preventDefault(); event.stopPropagation(); const result = addSupplierPrice(form); if (!result.ok) setError(result.message); else onClose(); }
+    async function submit(event) { event.preventDefault(); event.stopPropagation(); const result = await addSupplierPrice(form); if (!result.ok) setError(result.message); else onClose(); }
     return <AppModal submitLabel="Registrar costo" title="Registrar costo" subtitle={supply.name} onClose={onClose} onSubmit={submit}>
         <p className="form-text">Cada registro conserva su fecha, precio y relaciones vigentes. Los costos anteriores no se sobrescriben.</p>
         <SupplierCostFields value={form} onChange={setForm} />

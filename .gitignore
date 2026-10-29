@@ -35,3 +35,42 @@ dist-ssr
 /coverage/
 CalcQuim_*.json
 CalcQuim_*.xlsx
+
+# Private evidence and database archives, at any depth.
+*.private.json
+*.private.md
+*.dump
+*.backup
+*.manifest.json
+**/.npm-cache/
+**/coverage/
+**/test-results/
+**/playwright-report/
+*.tsbuildinfo
+*.tmp
+*.bak
+
+# Local connector workspace IDs; keep portable Postman collections.
+/.postman/
+
+# SQL migrations in server/migrations stay versioned. Only backup locations
+# and explicitly named SQL dumps are excluded.
+/backups/
+/server/backups/
+CalcQuim_*.sql
+calcquim-backup-*.sql
+*_backup.sql
+backup-*.sql
+dump-*.sql
+*.dump.sql
+/tickets/
+/receipts/
+/server/uploads/
+
+# Accidental alternate names for private environment files.
+**/development.env
+**/production.env
+**/migration.env
+**/operational.env
+**/test.env.test
+**/*env copy.example

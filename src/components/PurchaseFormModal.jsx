@@ -52,13 +52,13 @@ export default function PurchaseFormModal({ purchase, onClose, onSave }) {
     const sortedGroups = groupPurchaseItems(items, products, categories, productLines);
     const total = Math.round(calculated.reduce((sum, item) => sum + (item?.total || 0), 0) * 100) / 100;
     function change(id, data) { setItems((current) => current.map((item) => item.id === id ? { ...item, ...data } : item)); }
-    function submit(e) {
+    async function submit(e) {
         e.preventDefault();
         if (receiptBusy) return;
         if (!supplierId) return setError("Escribe el proveedor de esta compra.");
         if (!date || date > localDate()) return setError("Selecciona una fecha válida, no futura.");
         if (!items.length || calculated.some((item) => !item) || !Number.isFinite(total)) return setError("Agrega artículos con cantidad mayor que cero y un costo válido.");
-        const result = onSave({ receipt, supplierId, date, reference: reference.trim(), notes: notes.trim(), items: sortedGroups.flatMap(({ items: entries, ...group }) => entries.map(({ index }) => ({ ...calculated[index], group }))), total });
+        const result = await onSave({ receipt, supplierId, date, reference: reference.trim(), notes: notes.trim(), items: sortedGroups.flatMap(({ items: entries, ...group }) => entries.map(({ index }) => ({ ...calculated[index], group }))), total });
         if (!result.ok) return setError(result.message);
         onClose();
     }

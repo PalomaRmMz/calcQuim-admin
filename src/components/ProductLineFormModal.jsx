@@ -26,7 +26,7 @@ function ProductLineFormModal({
     const categoryInactive = Boolean(selectedCategory && !selectedCategory.active);
     const cannotActivate = categoryInactive && !active;
 
-    function handleSubmit(event) {
+    async function handleSubmit(event) {
         event.preventDefault();
         setError("");
 
@@ -45,7 +45,7 @@ function ProductLineFormModal({
             return;
         }
 
-        const result = onSave({
+        const result = await onSave({
             name: name.trim(),
             categoryId: Number(categoryId),
             active,

@@ -13,7 +13,7 @@ function PriceGroupFormModal({ show, priceGroup, onClose, onSave }) {
     const isEditing = Boolean(priceGroup);
 
 
-    function handleSubmit(event) {
+    async function handleSubmit(event) {
         event.preventDefault();
         setError("");
 
@@ -27,7 +27,7 @@ function PriceGroupFormModal({ show, priceGroup, onClose, onSave }) {
             return;
         }
 
-        const result = onSave({
+        const result = await onSave({
             name: name.trim(),
             price: Number(price),
             active,

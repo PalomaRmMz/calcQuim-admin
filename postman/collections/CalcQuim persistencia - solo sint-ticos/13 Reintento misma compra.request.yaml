@@ -1,0 +1,23 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/purchases"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: '{"supplierId": "{{supplierA}}", "date": "2026-01-02", "items": [{"supplyItemId": "{{sourceA}}", "quantity": 2, "costMode": "unit", "cost": 30}]}'
+scripts:
+  - type: beforeRequest
+    code: |-
+      pm.request.headers.upsert({key:'Idempotency-Key',value:pm.collectionVariables.get('purchaseKey')});
+      pm.request.body.update(pm.collectionVariables.get('purchaseBody'));
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });
+      const value = pm.response.json();
+      if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));
+      if (value.generation) pm.collectionVariables.set('generation', value.generation);
+      pm.test('Compra no duplicada', () => { if (!value.replayed) throw new Error('Debe ser replay'); });
+    language: text/javascript
+order: 16000

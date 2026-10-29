@@ -1,0 +1,18 @@
+$kind: collection
+name: CalcQuim persistencia ? solo sint?ticos
+description: Ejecutar en orden con Express start:sandbox. Crea datos sint?ticos con nombres ?nicos. No contiene credenciales. No usar para importar respaldos reales.
+variables:
+  baseUrl: http://127.0.0.1:3001
+  runTag: ""
+  revision: ""
+  generation: ""
+scripts:
+  - type: http:beforeRequest
+    code: |-
+      if (pm.request.method !== 'GET') {
+      pm.request.headers.upsert({key:'X-CalcQuim-Mode',value:'synthetic'});
+      pm.request.headers.upsert({key:'If-Match',value:pm.collectionVariables.get('revision') || ''});
+      pm.request.headers.upsert({key:'X-Dataset-Generation',value:pm.collectionVariables.get('generation') || ''});
+      pm.request.headers.upsert({key:'Idempotency-Key',value:pm.variables.replaceIn('{{$guid}}')});
+      }
+    language: text/javascript

@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.npm-cache/
+coverage/
+*.log
+*.dump
+*.backup
+certs/
+artifacts/
+*.manifest.json
+migration.env
+operational.env
+* copy.example
+test.env.test

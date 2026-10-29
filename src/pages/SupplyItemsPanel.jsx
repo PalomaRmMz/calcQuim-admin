@@ -97,7 +97,7 @@ export default function SupplyItemsPanel() {
                 {!sources(article).length && <p className="text-muted">No hay proveedores configurados. Agrega uno para poder registrar compras.</p>}
                 {sources(article).map(source => <section className="supply-offer" key={source.id}>
                     <div className="supply-offer-header"><div><h3>{analytics.supplierMap.get(source.supplierId)?.name}</h3><p>{supplyPresentation(joinedSupply(data, source))}</p></div><StatusBadge active={source.active} /></div>
-                    <SupplyPriceSection supplyId={joinedSupply(data, source).id} additionalActions={<ActionMenu label="Más acciones del proveedor" actions={[{ label: 'Editar proveedor y presentación', onClick: () => setForm({ kind: 'source', article, source }) }, { label: source.active ? 'Inactivar' : 'Activar', onClick: () => { const result = setSupplyActive(source.id, !source.active); setError(result.ok ? '' : result.message); } }]} />} />
+                    <SupplyPriceSection supplyId={joinedSupply(data, source).id} additionalActions={<ActionMenu label="Más acciones del proveedor" actions={[{ label: 'Editar proveedor y presentación', onClick: () => setForm({ kind: 'source', article, source }) }, { label: source.active ? 'Inactivar' : 'Activar', onClick: async () => { const result = await setSupplyActive(source.id, !source.active); setError(result.ok ? '' : result.message); } }]} />} />
                 </section>)}
                 {error && <p role="alert">{error}</p>}
             </div>

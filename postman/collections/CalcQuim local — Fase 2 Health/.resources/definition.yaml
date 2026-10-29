@@ -1,0 +1,5 @@
+$kind: collection
+description: Solo loopback. No contiene credenciales ni datos reales. expectedReadyStatus=503 mientras PostgreSQL no esté configurado; cambiar a 200 después de validarlo.
+variables:
+  baseUrl: http://127.0.0.1:3001
+  expectedReadyStatus: "503"

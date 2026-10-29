@@ -1,0 +1,19 @@
+$kind: http-request
+name: 02 Categor?a sint?tica
+url: "{{baseUrl}}/api/v1/categories"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: '{"name": "Categor?a Postman {{runTag}}", "active": true}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });
+      const value = pm.response.json();
+      if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));
+      if (value.generation) pm.collectionVariables.set('generation', value.generation);
+      pm.collectionVariables.set('categoryId', String(value.data.categories[value.data.categories.length - 1].id));
+    language: text/javascript
+order: 2000

@@ -99,9 +99,9 @@ export default function BatchSupplyModal({ mode: initialMode = "create", initial
         const result = prepareSupplyBatch(data, products, request);
         setReview({ request, result });
     }
-    function save(event) {
+    async function save(event) {
         event.preventDefault();
-        const result = saveSupplyBatch(review.request);
+        const result = await saveSupplyBatch(review.request);
         if (!result.ok) setError(result.message);
         else { onSaved(result.message); onClose(); }
     }

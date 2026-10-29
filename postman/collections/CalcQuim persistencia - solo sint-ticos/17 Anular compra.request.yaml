@@ -1,0 +1,17 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/purchases/{{purchaseId}}/void"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: "{}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });
+      const value = pm.response.json();
+      if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));
+      if (value.generation) pm.collectionVariables.set('generation', value.generation);
+    language: text/javascript
+order: 20000

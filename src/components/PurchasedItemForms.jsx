@@ -31,7 +31,7 @@ function EditPurchasedItemForm({ article, onClose }) {
     const { savePurchasedItem } = useProcurement();
     const [form, setForm] = useState(article || { name: '', materialReference: '', sourcingType: 'BASE', unit: 'litro', active: true });
     const [error, setError] = useState('');
-    return <AppModal submitLabel={article ? 'Guardar cambios' : 'Crear artículo'} title={article ? 'Editar artículo comprado' : 'Nuevo artículo comprado'} onClose={onClose} onSubmit={e => { e.preventDefault(); const result = savePurchasedItem(form); if (result.ok) onClose(); else setError(result.message); }}><ArticleFields value={form} onChange={setForm} /><label className="mt-3"><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> Activo</label><p className="form-text">No se agrega al catálogo de ventas. Después puedes agregar proveedores y productos finales.</p><Feedback message={error} /></AppModal>;
+    return <AppModal submitLabel={article ? 'Guardar cambios' : 'Crear artículo'} title={article ? 'Editar artículo comprado' : 'Nuevo artículo comprado'} onClose={onClose} onSubmit={async e => { e.preventDefault(); const result = await savePurchasedItem(form); if (result.ok) onClose(); else setError(result.message); }}><ArticleFields value={form} onChange={setForm} /><label className="mt-3"><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> Activo</label><p className="form-text">No se agrega al catálogo de ventas. Después puedes agregar proveedores y productos finales.</p><Feedback message={error} /></AppModal>;
 }
 
 export function SourceForm({ article, source, initialSupplierId, onClose }) {
@@ -42,12 +42,12 @@ export function SourceForm({ article, source, initialSupplierId, onClose }) {
     const [form, setForm] = useState(source || { purchaseQuantity: '', purchaseUnit: article.unit, presentation: '', active: true });
     const [costs, setCosts] = useState({});
     const [error, setError] = useState('');
-    function submit(e) {
+    async function submit(e) {
         e.preventDefault();
         if (!selected.length) return setError('Selecciona al menos un proveedor.');
         const sources = selected.map(supplierId => ({ ...form, id: createNew ? undefined : source?.id, purchasedItemId: article.id, supplierId, purchaseQuantity: form.purchaseQuantity === '' ? null : form.purchaseQuantity }));
         const quotes = selected.map(supplierId => costs[supplierId] === '' || costs[supplierId] == null ? null : { price: costs[supplierId], priceQuantity: form.purchaseQuantity || 1, priceUnit: form.purchaseUnit, quotedAt: localDate() });
-        const result = saveSources(sources, quotes);
+        const result = await saveSources(sources, quotes);
         if (result.ok) onClose(); else setError(result.message);
     }
     return <AppModal title={source ? 'Editar proveedor y presentación' : 'Agregar proveedores y presentación'} submitLabel={createNew || !source ? 'Agregar proveedor y presentación' : 'Guardar cambios'} subtitle={article.name} onClose={onClose} onSubmit={submit}>
@@ -75,11 +75,11 @@ export function ConversionForm({ article, products, conversion, onClose }) {
     const hasHistory = conversion && conversionHasHistory(data, conversion);
     const choice = product => getProductChoiceLabel(product, products, categories, productLines);
     const matches = available.filter(product => selected.includes(product.id) || normalizeText(choice(product)).includes(normalizeText(search)));
-    function submit(e) {
+    async function submit(e) {
         e.preventDefault();
         if (!selected.length) return setError('Selecciona productos finales.');
         const rows = selected.map(outputProductId => ({ outputProductId, active, yield: mode === 'pending' ? null : mode === 'common' ? rule : rules[outputProductId] || emptyRule(article.unit) }));
-        const result = conversion ? saveSupplyConversion({ ...rows[0], id: conversion.id, purchasedItemId: article.id }) : configureSupplyBatch({ mode: 'shared', purchasedItemId: article.id, rows });
+        const result = await (conversion ? saveSupplyConversion({ ...rows[0], id: conversion.id, purchasedItemId: article.id }) : configureSupplyBatch({ mode: 'shared', purchasedItemId: article.id, rows }));
         if (result.ok) onClose(); else setError(result.message);
     }
     return <AppModal submitLabel={conversion ? 'Guardar cambios' : 'Agregar productos'} title={conversion ? 'Editar producto y rendimiento' : 'Agregar productos finales al artículo'} subtitle={article.name} onClose={onClose} onSubmit={submit} maxWidth="md">
@@ -124,12 +124,12 @@ export function ProductSupplyBatchForm({ products, initialProductId, single = fa
     const hasRepeatedNames = new Set(repeatedNames).size < repeatedNames.length;
     const changeRow = (id, changes) => setValues({ ...values, [id]: { ...values[id], ...changes } });
     const sourceFields = (value, onChange) => <><SourcePurchaseFields value={value} onChange={onChange} finished={!articleBatch} /><SourceReferencePrice value={value} onChange={onChange} /></>;
-    function submit(e) {
+    async function submit(e) {
         e.preventDefault();
         if (!selected.length) return setError('Selecciona productos finales.');
         if (initialProductId != null && !contextProduct) return setError('El producto de origen ya no existe.');
         const rows = selected.map(outputProductId => ({ outputProductId, purchasedItemId: mode === 'individual' ? values[outputProductId]?.existingId : undefined, supplierId: data.suppliers.find(s => String(s.id) === String(values[outputProductId]?.supplierId))?.id, article: { ...article, name: values[outputProductId]?.name || '' }, source: individual && mode === 'individual' ? values[outputProductId]?.source || common : common, yield: yieldMode === 'pending' ? null : yieldMode === 'common' ? rule : values[outputProductId]?.yield || null }));
-        const result = configureProductBatch({ finished: !articleBatch, quotedAt: localDate(), mode, supplierMode, article, purchasedItemId: mode === 'shared' ? existing ?? undefined : undefined, supplierId: data.suppliers.find(s => String(s.id) === String(supplierId))?.id, rows });
+        const result = await configureProductBatch({ finished: !articleBatch, quotedAt: localDate(), mode, supplierMode, article, purchasedItemId: mode === 'shared' ? existing ?? undefined : undefined, supplierId: data.suppliers.find(s => String(s.id) === String(supplierId))?.id, rows });
         if (result.ok) onClose(); else setError(result.message);
     }
     return <AppModal title={articleBatch ? 'Agregar artículos comprados por lote' : single ? 'Agregar producto terminado' : 'Configurar productos terminados por lote'} onClose={onClose} onSubmit={submit} submitLabel={!articleBatch ? "Guardar abastecimiento" : mode === "shared" && existing != null ? "Agregar productos" : "Crear artículos y agregar productos"} maxWidth="lg">

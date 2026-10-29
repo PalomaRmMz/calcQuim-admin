@@ -1,0 +1,11 @@
+$kind: http-request
+name: 18 Protecci?n de referencias
+url: "{{baseUrl}}/api/v1/categories/{{categoryId}}"
+method: DELETE
+headers:
+  Content-Type: application/json
+scripts:
+  - type: afterResponse
+    code: pm.test('HTTP 422', () => { if (pm.response.code !== 422) throw new Error('Estado inesperado'); });
+    language: text/javascript
+order: 21000

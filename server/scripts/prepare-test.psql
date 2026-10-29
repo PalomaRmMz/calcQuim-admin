@@ -1,0 +1,18 @@
+-- Ejecutar manualmente como postgres con psql -W -f scripts/prepare-test.psql.
+-- Sin contraseñas ni datos de negocio. No usar --single-transaction.
+\set ON_ERROR_STOP on
+SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'calcquim_app_test')
+    OR EXISTS (SELECT 1 FROM pg_database WHERE datname = 'calcquim_test') AS target_exists
+\gset
+\if :target_exists
+  \echo 'Ya existe el rol o la base de pruebas. No se modifica nada; revisar sus propiedades en pgAdmin.'
+  \quit
+\endif
+
+CREATE ROLE calcquim_app_test LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+-- psql solicita la nueva contraseña dos veces sin mostrarla.
+\password calcquim_app_test
+CREATE DATABASE calcquim_test OWNER postgres;
+REVOKE CONNECT, TEMPORARY ON DATABASE calcquim_test FROM PUBLIC;
+GRANT CONNECT ON DATABASE calcquim_test TO calcquim_app_test;
+\echo 'Base vacía y rol de pruebas preparados. Completar server/.env.test de forma privada.'

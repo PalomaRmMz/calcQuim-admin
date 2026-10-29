@@ -56,7 +56,7 @@ function ProductFormModal({
         if (value !== "individual") setPrice("");
     }
 
-    function handleSubmit(event) {
+    async function handleSubmit(event) {
         event.preventDefault();
         setError("");
 
@@ -95,7 +95,7 @@ function ProductFormModal({
             };
         }
 
-        const result = onSave(productData);
+        const result = await onSave(productData);
 
         if (!result.ok) {
             setError(result.message);

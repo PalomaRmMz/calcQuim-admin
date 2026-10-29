@@ -1,0 +1,18 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/purchases/{{purchaseId}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: '{"supplierId": "{{supplierA}}", "date": "2026-01-02", "items": [{"id": "{{purchaseItemId}}", "supplyItemId": "{{sourceA}}", "quantity": 3, "costMode": "unit", "cost": 35}]}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });
+      const value = pm.response.json();
+      if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));
+      if (value.generation) pm.collectionVariables.set('generation', value.generation);
+      pm.test('Revisi?n conservada', () => { if (!value.data.procurement.purchases[0].revisions.length) throw new Error('Falta revisi?n'); });
+    language: text/javascript
+order: 17000

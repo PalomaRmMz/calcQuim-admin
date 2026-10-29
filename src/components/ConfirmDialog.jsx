@@ -5,8 +5,8 @@ import Feedback from "./Feedback";
 
 export default function ConfirmDialog({ title = "Eliminar registro", children, onClose, onConfirm, confirmText = "Eliminar" }) {
     const [error, setError] = useState("");
-    function confirm() {
-        const result = onConfirm();
+    async function confirm() {
+        const result = await onConfirm();
         if (result && !result.ok) setError(result.message);
         else onClose();
     }

@@ -1,0 +1,11 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/health/live"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('Proceso vivo', () => pm.expect(pm.response.json()).to.eql({status: 'ok'}));
+      pm.test('Sin caché', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));
+    language: text/javascript
+order: 1000

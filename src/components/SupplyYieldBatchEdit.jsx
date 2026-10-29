@@ -51,11 +51,11 @@ export default function SupplyYieldBatchEdit({ onClose }) {
         setAppliedCommon({ ...common });
         setError('');
     }
-    function submit(e) {
+    async function submit(e) {
         e.preventDefault();
         if (unapplied) return setError('Aplica los valores comunes a seleccionados antes de guardar.');
         if (!preview?.modified) return setError(validation || 'No hay rendimientos modificados.');
-        const result = saveSupplyYieldBatch(request);
+        const result = await saveSupplyYieldBatch(request);
         if (result.ok) onClose(); else setError(result.message);
     }
     const identity = row => <><strong>{row.article.name} → {row.productName}</strong><ClassificationBadge product={row.product} categories={categories} productLines={productLines} /><small>{yieldText(row.relation.yield)}{!row.relation.active ? ' · Abastecimiento inactivo' : ''}</small></>;

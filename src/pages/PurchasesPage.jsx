@@ -43,8 +43,8 @@ export default function PurchasesPage() {
     const filtered = purchases.filter((p) => (!from || p.date >= from) && (!to || p.date <= to) && (!supplier || p.supplierId === supplier) && (!status || (status === "void") === Boolean(p.voidedAt)));
     const valid = filtered.filter((p) => !p.voidedAt);
     const total = valid.reduce((sum, p) => sum + p.total, 0);
-    function save(input) {
-        const result = savePurchase(input, editing?.id);
+    async function save(input) {
+        const result = await savePurchase(input, editing?.id);
         if (result.ok) setNotice(editing ? "Compra actualizada; la versión anterior se conservó." : "Compra registrada correctamente.");
         return result;
     }
@@ -102,6 +102,6 @@ export default function PurchasesPage() {
             </>}</DialogContent>
             <DialogActions className="sale-detail-footer"><div><span>Total de compra · MXN</span><strong>{money(selected?.total || 0)}</strong></div>{!selected?.voidedAt && <Button variant="outlined" onClick={() => { setEditing(selected); setSelected(null); }}>Editar compra</Button>}<Button color="inherit" onClick={() => setSelected(null)}>Cerrar detalle</Button></DialogActions>
         </Dialog>
-        {deleting && <ConfirmDialog title="Anular compra" confirmText="Anular compra" onClose={() => setDeleting(null)} onConfirm={() => { const result = voidPurchase(deleting.id); if (result.ok) setNotice("Compra anulada. Su historial se conserva."); return result; }}>¿Anular la compra a {deleting.supplierNameSnapshot} por {money(deleting.total)}? Dejar? de participar en los totales y el comparador.</ConfirmDialog>}
+        {deleting && <ConfirmDialog title="Anular compra" confirmText="Anular compra" onClose={() => setDeleting(null)} onConfirm={async () => { const result = await voidPurchase(deleting.id); if (result.ok) setNotice("Compra anulada. Su historial se conserva."); return result; }}>¿Anular la compra a {deleting.supplierNameSnapshot} por {money(deleting.total)}? Dejar? de participar en los totales y el comparador.</ConfirmDialog>}
     </>;
 }

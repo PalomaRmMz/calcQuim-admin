@@ -1,0 +1,20 @@
+$kind: http-request
+name: 15 Venta sint?tica
+url: "{{baseUrl}}/api/v1/sales"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: '{"date": "2026-01-03", "payment": "Efectivo", "items": [{"productId": {{productId}}, "price": 20, "unit": "litro", "quantity": 10}]}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });
+      const value = pm.response.json();
+      if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));
+      if (value.generation) pm.collectionVariables.set('generation', value.generation);
+      pm.collectionVariables.set('saleId', String(value.data.sales[0].id));
+      pm.test('Mayoreo 170', () => { if (value.data.sales[0].total !== 170) throw new Error('Importe incorrecto'); });
+    language: text/javascript
+order: 18000

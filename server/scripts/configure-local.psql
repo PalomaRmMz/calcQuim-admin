@@ -1,0 +1,7 @@
+-- Ejecución manual como administrador PostgreSQL; sin secretos en este archivo.
+-- Solo cambia la escucha a loopback y prepara una base de pruebas vacía.
+\set ON_ERROR_STOP on
+ALTER SYSTEM SET listen_addresses = '127.0.0.1';
+SELECT pg_reload_conf();
+\echo 'Escucha local guardada. Reiniciar postgresql-x64-18 al terminar este script.'
+\ir prepare-test.psql

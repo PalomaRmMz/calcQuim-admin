@@ -1,0 +1,19 @@
+\set ON_ERROR_STOP on
+SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname IN ('calcquim_operational','calcquim_operational_restore','calcquim_activation_test')) OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname='calcquim_operational_app') AS target_exists
+\gset
+\if :target_exists
+  \echo 'Ya existe un destino o el rol. No se modifica ni reemplaza; revisar.'
+  \quit
+\endif
+CREATE ROLE calcquim_operational_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+\password calcquim_operational_app
+CREATE DATABASE calcquim_operational OWNER postgres;
+CREATE DATABASE calcquim_operational_restore OWNER postgres;
+CREATE DATABASE calcquim_activation_test OWNER postgres;
+REVOKE CONNECT, TEMPORARY ON DATABASE calcquim_operational FROM PUBLIC;
+REVOKE CONNECT, TEMPORARY ON DATABASE calcquim_operational_restore FROM PUBLIC;
+REVOKE CONNECT, TEMPORARY ON DATABASE calcquim_activation_test FROM PUBLIC;
+GRANT CONNECT, CREATE ON DATABASE calcquim_operational TO calcquim_operational_app;
+GRANT CONNECT, CREATE ON DATABASE calcquim_operational_restore TO calcquim_operational_app;
+GRANT CONNECT, CREATE ON DATABASE calcquim_activation_test TO calcquim_operational_app;
+\echo 'Tres bases nuevas preparadas. No se modificaron las bases anteriores.'

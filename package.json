@@ -6,6 +6,8 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "dev": "vite",
+    "dev:postgres": "vite --config vite.postgres.config.js --mode postgres-sandbox",
+    "build:postgres": "vite build --mode postgres-sandbox --outDir dist/postgres-sandbox",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

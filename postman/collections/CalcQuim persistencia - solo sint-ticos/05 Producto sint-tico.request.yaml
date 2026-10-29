@@ -1,0 +1,19 @@
+$kind: http-request
+name: 05 Producto sint?tico
+url: "{{baseUrl}}/api/v1/products"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: '{"name": "Producto Postman {{runTag}}", "categoryId": {{categoryId}}, "lineId": {{lineId}}, "priceGroupId": {{priceGroupId}}, "price": null, "unit": "litro", "active": true, "available": true}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });
+      const value = pm.response.json();
+      if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));
+      if (value.generation) pm.collectionVariables.set('generation', value.generation);
+      pm.collectionVariables.set('productId', String(value.data.products[value.data.products.length - 1].id));
+    language: text/javascript
+order: 5000

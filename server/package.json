@@ -1,0 +1,40 @@
+{
+  "name": "calcquim-local-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs",
+    "start:sandbox": "node src/server.mjs --sandbox",
+    "migrate": "node scripts/migrate.mjs",
+    "import:preview": "node scripts/preview-import.mjs",
+    "import:stage": "node scripts/stage-import.mjs",
+    "migration:rehearse-real": "node scripts/rehearse-real.mjs",
+    "backup:sandbox": "node scripts/backup-sandbox.mjs",
+    "restore:check": "node scripts/restore-check.mjs",
+    "test:integration": "node --test integration/*.test.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "lint": "eslint .",
+    "test:postgres": "node scripts/check-postgres.mjs",
+    "verify:postgres:dev": "node scripts/verify-postgres.mjs development",
+    "verify:postgres:test": "node scripts/verify-postgres.mjs test",
+    "start:operational": "node src/server.mjs --operational",
+    "operational:prepare": "node scripts/rehearse-real.mjs --operational --window-confirmed",
+    "test:activation": "node scripts/test-activation.mjs",
+    "operational:activate": "node scripts/activate-operational.mjs --window-confirmed",
+    "backup:operational": "node scripts/backup-operational.mjs"
+  },
+  "dependencies": {
+    "express": "5.3.0",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "globals": "17.13.0"
+  }
+}

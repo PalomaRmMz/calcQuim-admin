@@ -30,10 +30,10 @@ export default function SupplyFormModal({ supply, productId, onClose }) {
         setKnown(next.known);
         setRule(next.rule);
     }
-    function submit(event) {
+    async function submit(event) {
         event.preventDefault();
         const cost = !supply && String(initialCost.price).trim() !== "" ? { ...initialCost, priceQuantity: initialCost.priceQuantity ?? (form.purchaseQuantity || 1), priceUnit: initialCost.priceUnit || form.purchaseUnit } : null;
-        const result = saveSupply({ ...form, name: form.name.trim() || (ready ? getProductDisplayName(outputProduct, categories, productLines) : ""), purchaseQuantity: form.purchaseQuantity === "" ? null : form.purchaseQuantity, yield: ready ? buildReadyToUseYield(form.purchaseUnit, outputProduct?.unit) : known ? rule : null }, cost);
+        const result = await saveSupply({ ...form, name: form.name.trim() || (ready ? getProductDisplayName(outputProduct, categories, productLines) : ""), purchaseQuantity: form.purchaseQuantity === "" ? null : form.purchaseQuantity, yield: ready ? buildReadyToUseYield(form.purchaseUnit, outputProduct?.unit) : known ? rule : null }, cost);
         if (!result.ok) setError(result.message); else onClose();
     }
     return <AppModal title={supply ? "Editar alternativa" : "Nueva alternativa"} subtitle="Selecciona cómo abasteces el producto final." onClose={onClose} onSubmit={submit} maxWidth="md">

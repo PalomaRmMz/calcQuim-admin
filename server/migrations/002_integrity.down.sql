@@ -1,0 +1,14 @@
+DROP TRIGGER purchases_total ON purchases;
+DROP TRIGGER purchase_items_total ON purchase_items;
+DROP TRIGGER sales_total ON sales;
+DROP TRIGGER sale_items_total ON sale_items;
+DROP FUNCTION check_document_total();
+ALTER TABLE products DROP CONSTRAINT product_unit;
+ALTER TABLE purchased_items DROP CONSTRAINT article_unit;
+ALTER TABLE supply_sources DROP CONSTRAINT source_unit;
+ALTER TABLE supply_conversions DROP CONSTRAINT input_unit, DROP CONSTRAINT output_unit;
+ALTER TABLE supplier_costs DROP CONSTRAINT cost_unit;
+ALTER TABLE purchase_items DROP CONSTRAINT purchase_unit;
+ALTER TABLE sale_items DROP CONSTRAINT sale_unit;
+ALTER TABLE source_yield_overrides DROP CONSTRAINT presentation_identity;
+DROP TABLE units;

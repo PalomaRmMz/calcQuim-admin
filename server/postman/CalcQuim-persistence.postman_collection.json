@@ -1,0 +1,766 @@
+{
+  "info": {
+    "name": "CalcQuim persistencia ? solo sint?ticos",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Ejecutar en orden con Express start:sandbox. Crea datos sint?ticos con nombres ?nicos. No contiene credenciales. No usar para importar respaldos reales."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:3001"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.request.method !== 'GET') {",
+          "pm.request.headers.upsert({key:'X-CalcQuim-Mode',value:'synthetic'});",
+          "pm.request.headers.upsert({key:'If-Match',value:pm.collectionVariables.get('revision') || ''});",
+          "pm.request.headers.upsert({key:'X-Dataset-Generation',value:pm.collectionVariables.get('generation') || ''});",
+          "pm.request.headers.upsert({key:'Idempotency-Key',value:pm.variables.replaceIn('{{$guid}}')});",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Dataset sint?tico",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/dataset",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('runTag', pm.variables.replaceIn('{{$guid}}'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Categor?a sint?tica",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/categories",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Categor?a Postman {{runTag}}\", \"active\": true}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('categoryId', String(value.data.categories[value.data.categories.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 L?nea sint?tica",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/product-lines",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"L?nea Postman {{runTag}}\", \"categoryId\": {{categoryId}}, \"active\": true}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('lineId', String(value.data.productLines[value.data.productLines.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Grupo de precio",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/price-groups",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Grupo Postman {{runTag}}\", \"price\": 20, \"active\": true}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('priceGroupId', String(value.data.priceGroups[value.data.priceGroups.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Producto sint?tico",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/products",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Producto Postman {{runTag}}\", \"categoryId\": {{categoryId}}, \"lineId\": {{lineId}}, \"priceGroupId\": {{priceGroupId}}, \"price\": null, \"unit\": \"litro\", \"active\": true, \"available\": true}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('productId', String(value.data.products[value.data.products.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Proveedor A",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/suppliers",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Proveedor A {{runTag}}\", \"active\": true}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('supplierA', String(value.data.procurement.suppliers[value.data.procurement.suppliers.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Proveedor B",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/suppliers",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Proveedor B {{runTag}}\", \"active\": true}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('supplierB', String(value.data.procurement.suppliers[value.data.procurement.suppliers.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Art?culo comprado",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/purchased-items",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Concentrado Postman {{runTag}}\", \"unit\": \"litro\", \"sourcingType\": \"CONCENTRATE\", \"active\": true}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('articleId', String(value.data.procurement.purchasedItems[value.data.procurement.purchasedItems.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Fuente A",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/supply-sources",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"purchasedItemId\": \"{{articleId}}\", \"supplierId\": \"{{supplierA}}\", \"purchaseUnit\": \"litro\", \"purchaseQuantity\": 1, \"presentation\": \"Sint?tica\", \"active\": true}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('sourceA', String(value.data.procurement.supplyItems[value.data.procurement.supplyItems.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Fuente B",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/supply-sources",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"purchasedItemId\": \"{{articleId}}\", \"supplierId\": \"{{supplierB}}\", \"purchaseUnit\": \"litro\", \"purchaseQuantity\": 1, \"presentation\": \"Sint?tica\", \"active\": true}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('sourceB', String(value.data.procurement.supplyItems[value.data.procurement.supplyItems.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Conversi?n",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/supply-conversions",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"purchasedItemId\": \"{{articleId}}\", \"outputProductId\": {{productId}}, \"active\": true, \"yield\": {\"inputQuantity\": 1, \"inputUnit\": \"litro\", \"outputQuantity\": 5, \"outputUnit\": \"litro\"}}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('conversionId', String(value.data.procurement.supplyConversions[value.data.procurement.supplyConversions.length - 1].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Costo informado A",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/supplier-costs",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"supplyItemId\": \"{{sourceA}}\", \"price\": 50, \"priceQuantity\": 1, \"priceUnit\": \"litro\", \"quotedAt\": \"2026-01-01\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Costo informado B",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/supplier-costs",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"supplyItemId\": \"{{sourceB}}\", \"price\": 70, \"priceQuantity\": 1, \"priceUnit\": \"litro\", \"quotedAt\": \"2026-01-01\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Comparador",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/analytics/procurement?today=2026-01-02",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Compra sint?tica",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/purchases",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"supplierId\": \"{{supplierA}}\", \"date\": \"2026-01-02\", \"items\": [{\"supplyItemId\": \"{{sourceA}}\", \"quantity\": 2, \"costMode\": \"unit\", \"cost\": 30}]}"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('purchaseKey', pm.request.headers.get('Idempotency-Key'));",
+              "pm.collectionVariables.set('purchaseBody', pm.variables.replaceIn(pm.request.body.raw));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('purchaseId', String(value.data.procurement.purchases[0].id));",
+              "pm.collectionVariables.set('purchaseItemId', String(value.data.procurement.purchases[0].items[0].id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Reintento misma compra",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/purchases",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"supplierId\": \"{{supplierA}}\", \"date\": \"2026-01-02\", \"items\": [{\"supplyItemId\": \"{{sourceA}}\", \"quantity\": 2, \"costMode\": \"unit\", \"cost\": 30}]}"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({key:'Idempotency-Key',value:pm.collectionVariables.get('purchaseKey')});",
+              "pm.request.body.update(pm.collectionVariables.get('purchaseBody'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.test('Compra no duplicada', () => { if (!value.replayed) throw new Error('Debe ser replay'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Editar compra e historial",
+      "request": {
+        "method": "PATCH",
+        "url": "{{baseUrl}}/api/v1/purchases/{{purchaseId}}",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"supplierId\": \"{{supplierA}}\", \"date\": \"2026-01-02\", \"items\": [{\"id\": \"{{purchaseItemId}}\", \"supplyItemId\": \"{{sourceA}}\", \"quantity\": 3, \"costMode\": \"unit\", \"cost\": 35}]}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.test('Revisi?n conservada', () => { if (!value.data.procurement.purchases[0].revisions.length) throw new Error('Falta revisi?n'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Venta sint?tica",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/sales",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"date\": \"2026-01-03\", \"payment\": \"Efectivo\", \"items\": [{\"productId\": {{productId}}, \"price\": 20, \"unit\": \"litro\", \"quantity\": 10}]}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
+              "pm.collectionVariables.set('saleId', String(value.data.sales[0].id));",
+              "pm.test('Mayoreo 170', () => { if (value.data.sales[0].total !== 170) throw new Error('Importe incorrecto'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 Anular venta",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/sales/{{saleId}}/void",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 Anular compra",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/purchases/{{purchaseId}}/void",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 Protecci?n de referencias",
+      "request": {
+        "method": "DELETE",
+        "url": "{{baseUrl}}/api/v1/categories/{{categoryId}}",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 422', () => { if (pm.response.code !== 422) throw new Error('Estado inesperado'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 Reportes",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/analytics/reports?today=2026-01-02",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 Historial",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/purchases",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });",
+              "const value = pm.response.json();",
+              "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
+              "if (value.generation) pm.collectionVariables.set('generation', value.generation);"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

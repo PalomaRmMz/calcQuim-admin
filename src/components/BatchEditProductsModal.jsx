@@ -143,7 +143,7 @@ function BatchEditProductsModal({
 
     /* GUARDAR */
 
-    function handleSubmit(event) {
+    async function handleSubmit(event) {
         event.preventDefault();
         setError("");
 
@@ -205,7 +205,7 @@ function BatchEditProductsModal({
 
         if (editStatus) changes.active = active;
 
-        const result = onSave({
+        const result = await onSave({
             productIds: selectedProducts,
             changes,
         });

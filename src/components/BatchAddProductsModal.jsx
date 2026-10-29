@@ -227,7 +227,7 @@ function BatchAddProductsModal({
         }));
     }
 
-    function handleSubmit(event) {
+    async function handleSubmit(event) {
         event.preventDefault();
         setError("");
 
@@ -276,7 +276,7 @@ function BatchAddProductsModal({
             }
         }
 
-        const result = onSave({
+        const result = await onSave({
             items: rowsToCreate,
             categoryId: selectedCategoryId,
             lineId: selectedLineId,

@@ -7,7 +7,7 @@ import { convertQuantity } from '../utils/units.js';
 import { calculatePurchaseItem } from '../utils/purchaseUtils.js';
 
 export function prepareQuickProduct(input, catalog) {
-    const product = { ...input, id: Math.max(0, ...catalog.products.map(p => Number(p.id))) + 1, name: input.name?.trim(), active: true, available: true };
+    const product = { ...input, id: catalog.nextProductId?.() ?? Math.max(0, ...catalog.products.map(p => Number(p.id))) + 1, name: input.name?.trim(), active: true, available: true };
     if (product.categoryId === '' || product.categoryId == null) product.categoryId = null;
     if (product.categoryId != null && !catalog.categories.some(c => c.id === product.categoryId && c.active)) throw new Error('Selecciona una categoría activa.');
     if (product.lineId != null && !catalog.productLines.some(l => l.id === product.lineId && l.categoryId === product.categoryId && l.active)) throw new Error('La línea no pertenece a la categoría.');

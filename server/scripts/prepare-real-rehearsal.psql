@@ -1,0 +1,19 @@
+-- Intervención explícita del propietario: psql como postgres, contraseña solo en prompt.
+-- No utiliza ni modifica calcquim_dev o calcquim_test. No elimina ni reemplaza objetos.
+\set ON_ERROR_STOP on
+SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname IN ('calcquim_migration_check','calcquim_migration_restore'))
+  OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname='calcquim_migration_app') AS target_exists
+\gset
+\if :target_exists
+  \echo 'Ya existe una base o el rol propuesto. No se modificó nada; revisar antes de continuar.'
+  \quit
+\endif
+CREATE ROLE calcquim_migration_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+\password calcquim_migration_app
+CREATE DATABASE calcquim_migration_check OWNER postgres;
+CREATE DATABASE calcquim_migration_restore OWNER postgres;
+REVOKE CONNECT, TEMPORARY ON DATABASE calcquim_migration_check FROM PUBLIC;
+REVOKE CONNECT, TEMPORARY ON DATABASE calcquim_migration_restore FROM PUBLIC;
+GRANT CONNECT, CREATE ON DATABASE calcquim_migration_check TO calcquim_migration_app;
+GRANT CONNECT, CREATE ON DATABASE calcquim_migration_restore TO calcquim_migration_app;
+\echo 'Bases nuevas de ensayo listas; no se crearon tablas de negocio ni se modificaron las bases existentes.'

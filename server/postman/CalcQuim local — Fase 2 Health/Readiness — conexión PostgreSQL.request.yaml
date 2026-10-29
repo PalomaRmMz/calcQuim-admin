@@ -1,0 +1,12 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/health/ready"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      const expected = Number(pm.variables.get('expectedReadyStatus'));
+      pm.test('Estado esperado válido', () => pm.expect([200, 503]).to.include(expected));
+      pm.test('HTTP esperado', () => pm.response.to.have.status(expected));
+      pm.test('Dependencia', () => pm.expect(pm.response.json()).to.eql(expected === 200 ? {status: 'ready', database: 'up'} : {status: 'not_ready', database: 'unavailable'}));
+    language: text/javascript
+order: 2000

@@ -1,0 +1,18 @@
+$kind: http-request
+name: 01 Dataset sint?tico
+url: "{{baseUrl}}/api/v1/dataset"
+method: GET
+headers:
+  Content-Type: application/json
+scripts:
+  - type: beforeRequest
+    code: pm.collectionVariables.set('runTag', pm.variables.replaceIn('{{$guid}}'));
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });
+      const value = pm.response.json();
+      if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));
+      if (value.generation) pm.collectionVariables.set('generation', value.generation);
+    language: text/javascript
+order: 1000

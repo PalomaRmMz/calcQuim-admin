@@ -1,0 +1,19 @@
+$kind: http-request
+name: 03 L?nea sint?tica
+url: "{{baseUrl}}/api/v1/product-lines"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: '{"name": "L?nea Postman {{runTag}}", "categoryId": {{categoryId}}, "active": true}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => { if (pm.response.code !== 200) throw new Error('Estado inesperado'); });
+      const value = pm.response.json();
+      if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));
+      if (value.generation) pm.collectionVariables.set('generation', value.generation);
+      pm.collectionVariables.set('lineId', String(value.data.productLines[value.data.productLines.length - 1].id));
+    language: text/javascript
+order: 3000

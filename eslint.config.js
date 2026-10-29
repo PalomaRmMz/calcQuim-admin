@@ -19,4 +19,5 @@ export default defineConfig([
     },
   },
   { files: ['tests/**/*.js'], languageOptions: { globals: globals.node } },
+  { files: ['scripts/**/*.mjs'], ...js.configs.recommended, languageOptions: { globals: globals.node } },
 ])

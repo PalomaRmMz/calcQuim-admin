@@ -3,7 +3,8 @@ import TableActions from "../components/TableActions";
 import PrimaryAction from "../components/PrimaryAction";
 import ConfirmDialog from "../components/ConfirmDialog";
 import EmptyState from "../components/EmptyState";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { PersistenceContext } from '../context/PersistenceContext.js';
 import { Dialog, DialogContent, DialogActions, Button } from "@mui/material";
 import { faCartShopping, faDollarSign, faChartColumn, faCalendarDay } from "@fortawesome/free-solid-svg-icons";
 import SummaryCard from "../components/SummaryCard";
@@ -22,14 +23,16 @@ import Feedback from "../components/Feedback";
 import { Link } from "react-router";
 
 export default function SalesPage() {
+    const persistence = useContext(PersistenceContext);
     const catalog = useCatalog();
     const { products, categories, productLines } = catalog;
     const [state, setState] = useState(() => {
+        if (persistence) return {sales:[],error:''};
         try { return { ...loadSales(), epoch: localStorage.getItem(STORAGE_KEYS.resetEpoch), error: "" }; }
         catch (error) { return { sales: [], raw: null, error: error.message }; }
     });
     const committed = useRef(state);
-    const sales = state.sales;
+    const sales = persistence?.snapshot.data.sales ?? state.sales;
     const [creating, setCreating] = useState(false);
     const [selected, setSelected] = useState(null);
     const detailGroups = new Map();
@@ -74,14 +77,14 @@ export default function SalesPage() {
             return { ok: true };
         } catch (error) { return { ok: false, message: error.message || "No se pudo guardar la venta. Los datos anteriores se conservaron." }; }
     }
-    function saveSale(data) {
-        const result = commit(sales => createSale(sales, data, catalog, localStorage.getItem(STORAGE_KEYS.salesSequence)));
+    async function saveSale(data) {
+        const result = persistence ? await persistence.command('createSale',[data]) : commit(sales => createSale(sales, data, catalog, localStorage.getItem(STORAGE_KEYS.salesSequence)));
         if (result.ok) setNotice("Venta registrada correctamente.");
         return result;
     }
-    function deleteSale() {
+    async function deleteSale() {
         if (!deleting) return { ok: false, message: "Selecciona una venta." };
-        const result = commit(sales => voidSale(sales, deleting.id));
+        const result = persistence ? await persistence.command('voidSale',[deleting.id]) : commit(sales => voidSale(sales, deleting.id));
         if (result.ok) { setSelected(null); setDeleting(null); setNotice("Venta anulada; su historial se conserva."); }
         return result;
     }
