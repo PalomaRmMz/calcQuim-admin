@@ -1,0 +1,15 @@
+.inventory-report .report-metric[aria-pressed="true"] { border-color:var(--cq-primary); background:var(--cq-surface-hover); }
+.inventory-report-print { overflow:auto; }
+.inventory-report-print table { width:100%; border-collapse:collapse; font-size:12px; }
+.inventory-report-print th,.inventory-report-print td { padding:7px; border:1px solid #bbb; text-align:left; }
+@media print {
+    body:has(.inventory-report-print) .app-layout { display:none !important; }
+    body:has(.inventory-report-print) .MuiBackdrop-root { display:none !important; }
+    body:has(.inventory-report-print) .MuiDialog-root { position:static !important; }
+    body:has(.inventory-report-print) .MuiDialog-container { display:block !important; height:auto !important; }
+    body:has(.inventory-report-print) .MuiDialog-paper { margin:0 !important; width:100% !important; max-width:none !important; max-height:none !important; overflow:visible !important; box-shadow:none !important; }
+    body:has(.inventory-report-print) .MuiDialogContent-root,.inventory-report-print { overflow:visible !important; }
+    body:has(.inventory-report-print) button { display:none !important; }
+    .inventory-report-print tr { break-inside:avoid; }
+    .inventory-report-print thead { display:table-header-group; }
+}

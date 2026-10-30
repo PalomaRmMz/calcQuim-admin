@@ -25,6 +25,11 @@ export function dataRouter(service) {
   });
   const {run,read}=createDataController(service);
   r.get('/dataset',read);
+  r.get('/reports/general-catalog',async(_req,res)=>{
+    const snapshot=await service.read();
+    const data=Object.fromEntries(['products','categories','productLines','priceGroups'].map(name=>[name,snapshot.data[name]]));
+    res.json({data,revision:snapshot.revision,generation:snapshot.generation,generatedAt:new Date().toISOString()});
+  });
   r.get('/inventory',async(_req,res)=>res.json(await service.inventory()));
   r.post('/commands/:name',async(req,res)=>run(req,res,req.params.name,req.body.args));
   r.get('/analytics/:kind',async(req,res)=>{

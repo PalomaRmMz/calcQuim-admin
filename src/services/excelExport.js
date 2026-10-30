@@ -4,7 +4,8 @@ import { getCellAddress, getOrderOfSiblings, insertElementMarkupAccordingToOrder
 const formats = { money: '"$"#,##0.00;[Red]("$"#,##0.00)', number: "#,##0.######", percent: "0.00%", text: "@" };
 const fileDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 export function exportFileName(workbook) {
-    return `CalcQuim_${{ products: "Productos", procurement: "Compras", full: "Respaldo_Completo" }[workbook.scope]}_${fileDate(workbook.capturedAt)}.xlsx`;
+    if (workbook.scope === 'generalCatalog') return `CalcQuim_Catalogo_General_${workbook.capturedAt.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' })}.xlsx`;
+    return `CalcQuim_${{ inventory: "Existencias_y_reposicion", products: "Productos", procurement: "Compras", full: "Respaldo_Completo" }[workbook.scope]}_${fileDate(workbook.capturedAt)}.xlsx`;
 }
 
 export function workbookSheets(workbook) {
