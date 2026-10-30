@@ -104,7 +104,7 @@ export function productHasHistory(productId, storage = localStorage) {
     if (storage.getItem(STORAGE_KEYS.procurement) !== null && !validEnvelope(procurement)) throw new Error("No se pudo comprobar la integridad del historial.");
     const purchases = procurement?.purchases || readJSON(storage, STORAGE_KEYS.purchases, []);
     if (!Array.isArray(sales) || !Array.isArray(purchases) || sales.some((sale) => !Array.isArray(sale?.items))) throw new Error("No se pudo comprobar el historial.");
-    const usesProduct = (purchase) => purchase.items?.some((item) => [item.productId, item.outputProductId, item.directProductId, ...(item.conversionSnapshots || []).map(c => c.productId)].some(value => value != null && String(value) === String(productId))) || purchase.revisions?.some(usesProduct);
+    const usesProduct = (purchase) => purchase.items?.some((item) => [item.productId, item.outputProductId, item.directProductId, ...(item.eligibleProductIds || []), ...(item.conversionSnapshots || []).map(c => c.productId)].some(value => value != null && String(value) === String(productId))) || purchase.revisions?.some(usesProduct);
     if (procurement?.supplyConversions?.some(c => String(c.outputProductId) === String(productId))) return true;
     if (procurement?.supplierPrices?.some(q => q.snapshot?.conversionSnapshots?.some(c => String(c.productId) === String(productId)))) return true;
     return sales.some(usesProduct) || purchases.some(usesProduct) || procurement?.supplyItems?.some((s) => s.outputProductId != null && String(s.outputProductId) === String(productId)) || procurement?.supplierPrices?.some((q) => q.snapshot?.productId != null && String(q.snapshot.productId) === String(productId));

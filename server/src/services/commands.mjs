@@ -1,3 +1,4 @@
+import { createMobileSale, correctMobileSale } from '../mobile/domain.mjs';
 import { createCatalogActions } from '../../../src/services/catalogDomain.js';
 import { catalogCollectionError } from '../../../src/services/catalogValidation.js';
 import { STORAGE_KEYS } from '../../../src/services/catalogStorage.js';
@@ -17,7 +18,7 @@ export class ApiError extends Error {
 }
 export const catalogCommands = ['addCategory','updateCategory','deleteCategory','addProductLine','updateProductLine','deleteProductLine','addPriceGroup','updatePriceGroup','deletePriceGroup','addProduct','updateProduct','deleteProduct','addProductsBatch','updateProductsBatch'];
 export const procurementCommands = ['savePurchasedItem','savePurchasedItemsBatch','saveSupplyYieldBatch','savePurchasedItemSetup','saveSupplySource','saveSupplyConversion','configureSupplyBatch','configureProductBatch','saveSources','saveSupplier','setSupplyActive','addSupplierPrice','deleteEntity','savePurchase','voidPurchase'];
-export const commandNames = [...catalogCommands,...procurementCommands,'createSale','voidSale'];
+export const commandNames = [...catalogCommands,...procurementCommands,'createSale','createMobileSale','correctMobileSale','voidSale'];
 export function memoryStorage(data) {
   const values = {
     [STORAGE_KEYS.products]: data.products,[STORAGE_KEYS.categories]:data.categories,
@@ -42,7 +43,14 @@ export function validateDataset(data) {
   const issues = supply.supplyModelIssues({...data.procurement,supplyMigration:undefined}, data.products);
   if (issues.length) throw new ApiError(422,'INVALID_RELATION',issues[0]);
   validateSales(data.sales);
-  if (data.sales.some(s=>s.items.some(i=>!data.products.some(p=>p.id===i.productId)))) throw new ApiError(422,'INVALID_RELATION','Venta con producto inexistente.');
+  for(const sale of data.sales)for(const item of sale.items) {
+    if(item.reference&&item.reference.kind!=='product') {
+      const collection=({line:'productLines',category:'categories',priceGroup:'priceGroups'})[item.reference.kind];
+      if(!collection||!data[collection].some(row=>String(row.id)===String(item.reference.id)))throw new ApiError(422,'INVALID_RELATION','La agrupación tiene historial comercial; conserva su identificador.');
+    }
+    if(item.eligibleProductIds?.some(id=>!data.products.some(p=>String(p.id)===String(id))))throw new ApiError(422,'INVALID_RELATION','Un producto tiene compatibilidad comercial histórica; conserva su identificador.');
+  }
+  if (data.sales.some(s=>s.items.some(i=>i.productId!=null&&!data.products.some(p=>p.id===i.productId)))) throw new ApiError(422,'INVALID_RELATION','Venta con producto inexistente.');
 }
 export function executeCommand(data, counters, name, args) {
   if (!commandNames.includes(name) || !Array.isArray(args) || args.length>3) throw new ApiError(400,'INVALID_COMMAND','Operación no válida.');
@@ -87,6 +95,8 @@ export function executeCommand(data, counters, name, args) {
       case 'voidPurchase':
         if (!p.purchases.some(x=>x.id===args[0]&&!x.voidedAt)) throw new ApiError(404,'NOT_FOUND','Compra no encontrada o anulada.');
         p=procurement.voidPurchase(p,args[0]); break;
+      case 'correctMobileSale': data.sales=correctMobileSale(data.sales,args[0],args[1]); break;
+      case 'createMobileSale': data.sales=createMobileSale(data.sales,args[0],catalog,counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
       case 'createSale': data.sales=createSale(data.sales,args[0],catalog,counters.sales??0); break;
       case 'voidSale': data.sales=voidSale(data.sales,args[0]); break;
       default: throw new ApiError(400,'INVALID_COMMAND','Operación no disponible.');

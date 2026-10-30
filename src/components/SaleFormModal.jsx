@@ -67,7 +67,7 @@ export default function SaleFormModal({ onClose, onSave,inventoryEnabled=false }
 
     function addProduct(product) {
         if (!product) return;
-        setItems((current) => current.some((item) => item.productId === product.id) ? current : [...current, { productId: product.id, name: getProductDisplayName(product, categories, productLines), unit: product.unit, price: getProductPrice(product), quantity: 1 }]);
+        setItems((current) => current.some((item) => item.productId === product.id) ? current : [...current, { productId: product.id, name: getProductDisplayName(product, categories, productLines), unit: product.unit, price: getProductPrice(product), quantity: "", requestedAmount: "" }]);
         setProductSearch("");
     }
 
@@ -131,7 +131,11 @@ export default function SaleFormModal({ onClose, onSave,inventoryEnabled=false }
                         <div className="d-flex flex-nowrap align-items-center gap-3" role="group" aria-label={`Modo de venta de ${item.name}`}>
                             {[{ value: "quantity", label: "Por cantidad" }, { value: "amount", label: "Por monto" }].map((mode) => (
                                 <label key={mode.value} className="sale-entry-checkbox d-flex">
-                                    <input type="radio" name={`sale-mode-${item.productId}`} className="form-check-input" aria-label={`${mode.label}: ${item.name}`} checked={(item.entryMode || "quantity") === mode.value} disabled={mode.value === "amount" && item.price <= 0} onChange={() => setItems(items.map((entry) => entry.productId === item.productId ? { ...entry, entryMode: mode.value, requestedAmount: item.amount, quantity: Number(item.quantity.toFixed(3)) } : entry))} />
+                                    <input type="radio" name={`sale-mode-${item.productId}`} className="form-check-input" aria-label={`${mode.label}: ${item.name}`} checked={(item.entryMode || "quantity") === mode.value} disabled={mode.value === "amount" && item.price <= 0} onChange={() => setItems(items.map((entry) => {
+                                        if (entry.productId !== item.productId) return entry;
+                                        const empty = (entry.entryMode === "amount" ? entry.requestedAmount : entry.quantity) === "";
+                                        return { ...entry, entryMode: mode.value, requestedAmount: empty ? "" : item.amount, quantity: empty ? "" : Number(item.quantity.toFixed(3)) };
+                                    }))} />
                                     <span>{mode.label}</span>
                                 </label>
                             ))}

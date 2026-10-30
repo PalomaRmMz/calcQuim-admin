@@ -30,11 +30,18 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
   return {
     read:()=>transaction(async c=>({...await read(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false}),true),
     inventory:()=>transaction(async c=>readInventory(c,(await read(c)).data),true),
-    async command({name,args,revision,generation,requestKey}) {
+    mobileStatus:key=>transaction(async c=>{
+      const row=(await c.query('SELECT response FROM idempotency_requests WHERE request_key=$1',['mobile:'+key])).rows[0];
+      const snapshot=await read(c);
+      return row?.response?.receipt?{receipt:row.response.receipt,revision:snapshot.revision,generation:snapshot.generation}:{status:'not_found'};
+    },true),
+    async command({name,args,revision,generation,requestKey,channel='WEB'}) {
+      if(name==='createMobileSale'&&channel!=='MOVIL')throw new ApiError(403,'CHANNEL_FORBIDDEN','Canal no autorizado.');
       if (!Number.isSafeInteger(revision)||typeof generation!=='string'||!requestKey||!/^[a-zA-Z0-9:_-]{8,150}$/.test(requestKey)) throw new ApiError(400,'INVALID_PRECONDITION','Se requieren revisión, generación y clave de idempotencia.');
       const hash=createHash('sha256').update(canonical({name,args,generation})).digest('hex');
       return transaction(async c=>{
         const current=await read(c,true);
+        if(['createMobileSale','correctMobileSale'].includes(name)&&!(await c.query('SELECT 1 FROM schema_migrations WHERE version=7')).rowCount)throw new ApiError(503,'MOBILE_SCHEMA_PENDING','La integración móvil requiere una migración autorizada.');
         const previous=(await c.query('SELECT * FROM idempotency_requests WHERE request_key=$1',[requestKey])).rows[0];
         if(previous) {
           if(previous.request_hash!==hash) throw new ApiError(409,'IDEMPOTENCY_CONFLICT','La clave ya corresponde a otra operación.');
@@ -49,8 +56,13 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
           else result=executeCommand(current.data,current.counters,name,args);
         }
         catch(error) {if(error instanceof ApiError) throw error; throw new ApiError(422,'DOMAIN_VALIDATION',error.message);}
-        if(inventoryCommands.includes(name))await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true');
-        else {await writeDataset(c,current.data,current.counters);await syncInventory(c,before,current.data,name,args);}
+        if(inventoryCommands.includes(name)) { if(JSON.stringify(before.sales)!==JSON.stringify(current.data.sales))await writeDataset(c,current.data,current.counters); else await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true'); }
+        else {await writeDataset(c,current.data,current.counters);await syncInventory(c,before,current.data,name,args);
+          if(name==='voidSale') {
+            const sale=current.data.sales.find(s=>s.id===args[0]);
+            sale.history=[...(sale.history||[]),{action:'voided',channel,at:new Date().toISOString()}];
+            await c.query('UPDATE sales SET record=$2 WHERE id=$1',[String(sale.id),JSON.stringify({...sale,items:[]})]);
+          }}
         await c.query('INSERT INTO idempotency_requests(request_key,request_hash,response) VALUES($1,$2,$3)',[requestKey,hash,JSON.stringify(result)]);
         return {...current,revision:current.revision+1,result,replayed:false,inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
       });

@@ -28,6 +28,7 @@ export function auditCalcQuim(snapshot, today = localDate()) {
     }
     function ref(collection, value, entity, id, field, required = false) {
         if (value == null || value === "") { if (required) add("ALTO", entity, id, field, "Referencia obligatoria ausente"); return null; }
+        if (!maps[collection]) { add("ALTO", entity, id, field, "Tipo de referencia desconocido", value); return null; }
         const entry = maps[collection].get(String(value));
         if (!entry) add("ALTO", entity, id, field, "Referencia huérfana", value);
         else if (entry.id !== value) add("MEDIO", entity, id, field, "Tipo de ID diferente al de la entidad vinculada", value);
@@ -95,11 +96,12 @@ export function auditCalcQuim(snapshot, today = localDate()) {
         row.items.forEach((item, index) => {
             if (!item || typeof item !== "object") { add("CRÍTICO", entity, row.id, "items", "Renglón ilegible"); return; }
             const child = `${entity}Item`, id = item.id ?? item.productId ?? `${row.id}/${index}`;
-            const key = String(purchase ? item.id ?? index : item.productId);
+            const key = String(purchase ? item.id ?? index : item.id ?? item.productId);
             if (seen.has(key)) add("CRÍTICO", child, id, "id", "Renglón duplicado");
             seen.add(key);
             const productId = item.productId ?? item.outputProductId;
-            ref("products", productId, child, id, "productId", !purchase);
+            ref("products", productId, child, id, "productId", !purchase && !item.reference);
+            if (!purchase && item.reference && item.productId == null) ref(({line:"productLines",category:"categories",priceGroup:"priceGroups"})[item.reference.kind], item.reference.id, child, id, "reference", true);
             if (purchase) {
                 const supply = ref("supplyItems", item.supplyItemId, child, id, "supplyItemId", true);
                 if (supply && (String(supply.supplierId) !== String(row.supplierId) || (!normalized && String(supply.outputProductId ?? "") !== String(productId ?? "")))) add("ALTO", child, id, "supplyItemId", "Vínculo no coincide con producto o proveedor");

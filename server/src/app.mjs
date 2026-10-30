@@ -1,4 +1,5 @@
 import express from 'express';
+import { mobileRouter } from './mobile/router.mjs';
 import { healthRouter } from './routes/health.mjs';
 import { createHealthService } from './services/health.mjs';
 import { dataRouter } from './routes/data.mjs';
@@ -11,6 +12,7 @@ export function createApp(database, dataService = null, mode='synthetic') {
   app.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   app.use('/api/v1/health', healthRouter(createHealthService(database)));
   if (dataService) {
+    app.use('/api/mobile/v1',mobileRouter(dataService,{mode,enabled:process.env.CALCQUIM_MOBILE_ENABLED==='yes',token:process.env.CALCQUIM_MOBILE_TOKEN||''}));
     app.use('/api/v1', (req,res,next) => {
       const host=req.hostname;
       if(!['127.0.0.1','localhost'].includes(host)) return res.status(403).json({error:{code:'LOCAL_ONLY'}});

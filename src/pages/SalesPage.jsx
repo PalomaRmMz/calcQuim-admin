@@ -1,3 +1,5 @@
+import MobileSaleCorrection from '../components/MobileSaleCorrection';
+import MobileSaleBreakdown from '../components/MobileSaleBreakdown';
 import ModalHeader from "../components/ModalHeader";
 import TableActions from "../components/TableActions";
 import PrimaryAction from "../components/PrimaryAction";
@@ -37,6 +39,7 @@ export default function SalesPage() {
     const sales = persistence?.snapshot.data.sales ?? state.sales;
     const [creating, setCreating] = useState(false);
     const [selected, setSelected] = useState(null);
+    useEffect(()=>{if(selected){const fresh=sales.find(s=>s.id===selected.id);if(fresh&&fresh!==selected)setSelected(fresh);}},[sales,selected]);
     const detailGroups = new Map();
     for (const item of selected?.items || []) {
         const product = products.find((entry) => entry.id === item.productId);
@@ -58,13 +61,15 @@ export default function SalesPage() {
     const [voidBaseline,setVoidBaseline]=useState('');
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
+    const [origin, setOrigin] = useState("");
+    const [onlyPending, setOnlyPending] = useState(false);
     const [notice, setNotice] = useState("");
     useEffect(() => {
         if (!notice) return;
         const timeout = window.setTimeout(() => setNotice(""), 4000);
         return () => window.clearTimeout(timeout);
     }, [notice, sales]);
-    const filtered = sales.filter((sale) => (!from || sale.date >= from) && (!to || sale.date <= to));
+    const filtered = sales.filter((sale) => (!origin || sale.origin === origin) && (!onlyPending || sale.items.some((i,n) => i.pendingBreakdown && !sale.breakdowns?.[n])) && (!from || sale.date >= from) && (!to || sale.date <= to));
     const valid = filtered.filter(s => !s.voidedAt);
     const total = valid.reduce((sum, sale) => sum + sale.total, 0);
     const todayTotal = sales.filter((sale) => !sale.voidedAt && sale.date === localDate()).reduce((sum, sale) => sum + sale.total, 0);
@@ -99,6 +104,8 @@ export default function SalesPage() {
     if (state.error) return <><Feedback message={state.error} /><Link to="/administracion/datos">Datos y respaldos</Link></>;
 
     const columns = [
+        { accessorKey: "origin", header: "Origen", Cell: ({ cell }) => cell.getValue() || "Sin dato histórico" },
+        { id: "breakdown", header: "Desglose", accessorFn: sale => sale.items.some((i,n) => i.pendingBreakdown && !sale.breakdowns?.[n]) ? "Pendiente" : "Completo" },
         { accessorKey: "folio", header: "Folio", size: 120 },
         { accessorKey: "date", header: "Fecha", Cell: ({ cell }) => new Date(`${cell.getValue()}T12:00:00`).toLocaleDateString("es-MX") },
         { accessorKey: "payment", header: "Método de pago" },
@@ -116,7 +123,7 @@ export default function SalesPage() {
         </div>
         {notice && <div className="alert alert-success" role="status">{notice}</div>}
         <ContentPanel title="Historial de ventas" subtitle="Consulta tus ventas y registra una nueva operación." action={<PrimaryAction onClick={() => setCreating(true)}>Nueva venta</PrimaryAction>}>
-            <div className="filter-bar">
+            <div className="filter-bar"><label>Origen<select className="form-select" value={origin} onChange={e=>setOrigin(e.target.value)}><option value="">Todos</option><option value="MOVIL">Móvil</option><option value="WEB">Web</option></select></label><label><input type="checkbox" checked={onlyPending} onChange={e=>setOnlyPending(e.target.checked)}/> Solo pendientes de desglose</label>
                 <div><label htmlFor="salesFrom" className="form-label">Desde</label><input id="salesFrom" type="date" className="form-control" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} /></div>
                 <div><label htmlFor="salesTo" className="form-label">Hasta</label><input id="salesTo" type="date" className="form-control" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></div>
                 <button className="btn btn-outline-secondary" onClick={() => { setFrom(""); setTo(""); }}>Limpiar filtros</button>
@@ -137,8 +144,8 @@ export default function SalesPage() {
                 </dl>
                 <div className="sale-section-heading"><h3>Productos de la venta</h3><span>{selected.items.length} productos</span></div><div className="table-responsive sale-items"><table className="table align-middle"><thead><tr><th>Producto</th><th>Vender por</th><th>Valor</th><th className="text-end">Importe</th></tr></thead>{sortedDetailGroups.map((group) => <tbody key={group.id}>
                     <tr className="sale-group-heading"><th scope="rowgroup" colSpan={4} style={getBadgeStyle(group.colorId) || { backgroundColor: "#f1f3f5", color: "#6c757d" }}>{group.name}</th></tr>
-                    {group.items.map((item) => <tr key={item.productId}><td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small></td><td><div className="d-flex flex-nowrap align-items-center gap-3" role="group" aria-label={`Modo de venta de ${item.name}`}>{[{ value: "quantity", label: "Por cantidad" }, { value: "amount", label: "Por monto" }].map((mode) => <label key={mode.value} className="sale-entry-checkbox"><input className="form-check-input" type="checkbox" disabled checked={(item.entryMode || "quantity") === mode.value} /><span>{mode.label}</span></label>)}</div></td><td><div className="input-group flex-nowrap" style={{ width: "max-content" }}><input className="form-control" style={{ width: "calc(5ch + 2.5rem)", flex: "0 0 auto" }} readOnly aria-label={`Valor vendido de ${item.name}`} value={item.entryMode === "amount" ? item.amount : item.quantity} /><span className="input-group-text">{item.entryMode === "amount" ? "MXN" : item.unit}</span></div>{item.entryMode === "amount" && <small className="d-block text-muted">≈ {Number(item.quantity.toFixed(3))} {item.unit}</small>}</td><td className="text-nowrap text-end">{money(item.amount)}{item.discountRate > 0 && <small className="sale-wholesale" title={`Descuento: ${money(item.discount)}`}>Mayoreo −15%</small>}</td></tr>)}</tbody>)}</table></div>
-                </section>{selected.notes && <details className="sale-notes"><summary>Notas de la venta</summary><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{selected.notes}</p></details>}
+                    {group.items.map((item) => <tr key={item.id || item.productId}><td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small></td><td><div className="d-flex flex-nowrap align-items-center gap-3" role="group" aria-label={`Modo de venta de ${item.name}`}>{[{ value: "quantity", label: "Por cantidad" }, { value: "amount", label: "Por monto" }].map((mode) => <label key={mode.value} className="sale-entry-checkbox"><input className="form-check-input" type="checkbox" disabled checked={(item.entryMode || "quantity") === mode.value} /><span>{mode.label}</span></label>)}</div></td><td><div className="input-group flex-nowrap" style={{ width: "max-content" }}><input className="form-control" style={{ width: "calc(5ch + 2.5rem)", flex: "0 0 auto" }} readOnly aria-label={`Valor vendido de ${item.name}`} value={item.entryMode === "amount" ? item.amount : item.quantity} /><span className="input-group-text">{item.entryMode === "amount" ? "MXN" : item.unit}</span></div>{item.entryMode === "amount" && <small className="d-block text-muted">≈ {Number(item.quantity.toFixed(3))} {item.unit}</small>}</td><td className="text-nowrap text-end">{money(item.amount)}{item.discountRate > 0 && <small className="sale-wholesale" title={`Descuento: ${money(item.discount)}`}>Mayoreo −15%</small>}</td></tr>)}</tbody>)}</table></div>
+                </section>{selected.origin==='MOVIL'&&persistence&&<MobileSaleCorrection sale={sales.find(s=>s.id===selected.id)||selected} persistence={persistence}/>} {selected.origin==='MOVIL'&&persistence&&!selected.voidedAt&&<MobileSaleBreakdown sale={sales.find(s=>s.id===selected.id)||selected} persistence={persistence} products={products}/>}<details className="sale-section"><summary>Historial de modificaciones</summary>{(sales.find(s=>s.id===selected.id)?.history||selected.history||[]).map((h,i)=><p key={i}>{h.at} · {h.channel} · {h.action}</p>)}</details>{selected.notes && <details className="sale-notes"><summary>Notas de la venta</summary><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{selected.notes}</p></details>}
             </>}</DialogContent>
             <DialogActions className="sale-modal-actions"><div className="sale-footer-total"><span>Total · MXN</span><strong>{money(selected?.total || 0)}</strong></div><Button color="inherit" onClick={() => setSelected(null)}>Cerrar detalle</Button></DialogActions>
         </Dialog>

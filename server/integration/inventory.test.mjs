@@ -24,7 +24,7 @@ test('inventario íntegro en esquema nuevo y datos exclusivamente sintéticos',a
   try{
     const isolated=await pool.connect();try{await isolated.query('BEGIN');await migrate(pool,schema,'up',{client:isolated});await isolated.query('ROLLBACK');}finally{isolated.release();}
     assert.equal((await pool.query('SELECT to_regnamespace($1) AS schema',[schema])).rows[0].schema,null);
-    await migrate(pool,schema);await migrate(pool,schema);await migrate(pool,schema,'down');assert.equal((await createDatasetService(pool,schema).inventory()).enabled,false);await migrate(pool,schema);
+    await migrate(pool,schema);await migrate(pool,schema);await migrate(pool,schema,'down');assert.equal((await createDatasetService(pool,schema).inventory()).enabled,true);await migrate(pool,schema,'down');assert.equal((await createDatasetService(pool,schema).inventory()).enabled,false);await migrate(pool,schema);
     service=createDatasetService(pool,schema);state=await service.read();
     await command('addCategory',{name:'Grupo sintético',active:true});await command('addProductLine',{name:'Línea sintética',categoryId:1,active:true});
     for(const name of ['Producto físico A sintético','Producto físico B sintético'])await command('addProduct',{name,unit:'litro',price:10,categoryId:1,lineId:1,active:true,available:true});

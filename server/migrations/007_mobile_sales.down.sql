@@ -1,0 +1,10 @@
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM sale_items WHERE product_id IS NULL) OR EXISTS(SELECT 1 FROM inventory_pending WHERE scope='priceGroup') OR EXISTS(SELECT 1 FROM sale_items GROUP BY sale_id,product_id HAVING count(*)>1) THEN RAISE EXCEPTION 'Conserva ventas móviles: no se puede revertir'; END IF; END $$;
+ALTER TABLE sale_items DROP CONSTRAINT sale_reference_required;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM inventory_pending GROUP BY sale_id,ordinal HAVING count(*)>1) THEN RAISE EXCEPTION 'Conserva revisiones comerciales: no se puede revertir'; END IF; END $$;
+DROP INDEX inventory_pending_active_line;
+ALTER TABLE inventory_pending ADD UNIQUE(sale_id,ordinal);
+ALTER TABLE sale_items ALTER COLUMN product_id SET NOT NULL;
+ALTER TABLE sale_items ADD UNIQUE(sale_id,product_id);
+ALTER TABLE inventory_pending ALTER COLUMN product_id SET NOT NULL;
+ALTER TABLE inventory_pending DROP CONSTRAINT inventory_pending_scope_check;
+ALTER TABLE inventory_pending ADD CONSTRAINT inventory_pending_scope_check CHECK(scope IN ('product','line','category'));

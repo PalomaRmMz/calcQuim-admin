@@ -119,6 +119,9 @@ async function allocate(c,data,input){
     const product=findProduct(data,item.productId),id=String(product.id);
     if(seen.has(id))fail('No repitas un producto en el desglose.');seen.add(id);
     if((pending.scope==='product'&&id!==pending.scope_id)||(pending.scope==='line'&&String(product.lineId)!==pending.scope_id)||(pending.scope==='category'&&String(product.categoryId)!==pending.scope_id))fail('El producto no pertenece al grupo confirmado.');
+    const captured=sale.items[pending.ordinal];
+    if(captured.eligibleProductIds&&!captured.eligibleProductIds.some(id=>String(id)===String(product.id)))fail('Producto incompatible con la tarifa histórica aplicada.');
+    if(pending.scope==='priceGroup'&&!captured.eligibleProductIds)fail('No hay evidencia de compatibilidad histórica.');
     const baseline=await checkBaseline(c,product,{createdAt:pending.created_at.toISOString(),date:sale.date},item.baselineTreatment??input.baselineTreatment);
     const physical=quantity(item.quantity,item.unit,product.unit),common=quantity(item.quantity,item.unit,pending.unit);
     if(inventoryDecimal(physical)<=0n)fail('Las cantidades deben ser positivas.');total+=inventoryDecimal(common);rows.push({product,physical,baseline});
@@ -129,7 +132,12 @@ async function allocate(c,data,input){
     await c.query('INSERT INTO inventory_allocations(id,pending_id,product_id,quantity,unit,movement_id) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),pending.id,String(row.product.id),row.physical,normalizeUnit(row.product.unit),id]);
   }
   await c.query("UPDATE inventory_pending SET state='resolved' WHERE id=$1",[pending.id]);
-  await inventoryChange(c,'allocation',{pendingId:pending.id,confirmedQuantity:expected,unit:pending.unit,reason:why.text,...why.metadata});return {};
+  await inventoryChange(c,'allocation',{pendingId:pending.id,confirmedQuantity:expected,unit:pending.unit,reason:why.text,...why.metadata});
+  if(sale.origin==='MOVIL') {
+    sale.breakdowns={...(sale.breakdowns||{}),[pending.ordinal]:rows.map(row=>({productId:row.product.id,name:row.product.name,quantity:row.physical,unit:row.product.unit}))};
+    sale.history=[...(sale.history||[]),{action:'breakdown',channel:'WEB',at:new Date().toISOString(),ordinal:pending.ordinal,allocations:sale.breakdowns[pending.ordinal]}];
+  }
+  return {};
 }
 export async function syncInventory(c,before,data,name,args){
   if(!await inventoryAvailable(c))return;
@@ -142,13 +150,36 @@ export async function syncInventory(c,before,data,name,args){
   if(!(await inventoryPolicy(c)).sales_enabled)return;
   for(const old of before.sales){
     const current=data.sales.find(s=>s.id===old.id);
-    if(!current||digest(current.items)!==digest(old.items)||current.total!==old.total||(current.voidedAt!==old.voidedAt&&name!=='voidSale'))fail('No se reescriben ventas con inventario: conserva el original y utiliza la anulación con confirmación física.');
+    if(!current||(name!=='correctMobileSale'&&(digest(current.items)!==digest(old.items)||current.total!==old.total))||(current.voidedAt!==old.voidedAt&&name!=='voidSale'))fail('No se reescriben ventas con inventario: conserva el original y utiliza la anulación con confirmación física.');
   }
-  if(name==='createSale'){
+  if(name==='correctMobileSale') {
+    const sale=data.sales.find(s=>s.id===args[0]);
+    if((await c.query("SELECT 1 FROM inventory_movements WHERE sale_id=$1 AND kind='return' LIMIT 1",[sale.id])).rowCount)fail('La venta tiene devoluciones: requiere revisión física específica antes de corregir.');
+    const outputs=(await c.query("SELECT m.* FROM inventory_movements m WHERE sale_id=$1 AND kind='sale' AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[sale.id])).rows;
+    for(const output of outputs) {
+      const baseline=await checkBaseline(c,findProduct(data,output.product_id),{seq:output.seq,createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
+      await appendInventoryMovement(c,findProduct(data,output.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(output.quantity)),reason:args[1].reason,saleId:sale.id,saleOrdinal:output.sale_ordinal,reversalOf:output.id,originKey:'correction-reverse:'+output.id,reference:{commercialVersion:sale.commercialVersion,...baseline}});
+    }
+    await c.query("UPDATE inventory_pending SET state='cancelled' WHERE sale_id=$1 AND state IN ('pending','resolved')",[sale.id]);
+    for(const [ordinal,item] of sale.items.entries()) {
+      if(item.reference.kind!=='product'||item.entryMode==='amount')await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});
+      else {
+        const product=findProduct(data,item.productId);
+        const baseline=await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
+        const physical=inventoryConvert(item.quantity,item.unit,product.unit);
+        await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:args[1].reason,saleId:sale.id,saleOrdinal:ordinal,originKey:'correction:'+sale.id+':'+sale.commercialVersion+':'+ordinal,reference:{commercialVersion:sale.commercialVersion,...baseline}});
+      }
+    }
+    await inventoryChange(c,'commercial_correction',{saleId:sale.id,version:sale.commercialVersion,channel:'WEB',reason:args[1].reason});
+  }
+  if(name==='createSale'||name==='createMobileSale'){
     const sale=data.sales.find(s=>!before.sales.some(old=>old.id===s.id));if(!sale)return;
     const intents=args[0].inventory??{};
     if(typeof intents!=='object'||Array.isArray(intents)||Object.entries(intents).some(([id,intent])=>!sale.items.some(i=>String(i.productId)===id)||!intent||typeof intent!=='object'||typeof intent.pendingGroup!=='boolean'))fail('La intención de inventario debe referir a renglones de la venta.');
     for(const [ordinal,item]of sale.items.entries()){
+      if(item.reference&&item.reference.kind!=='product'){
+        await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});continue;
+      }
       const product=findProduct(data,item.productId),intent=intents[String(item.productId)]??{};
       if(intent.pendingGroup){
         const scope=intent.scope;if(!['line','category'].includes(scope))fail('Selecciona línea o categoría para el desglose.');
@@ -183,5 +214,5 @@ export async function syncInventory(c,before,data,name,args){
 }
 async function addPending(c,sale,ordinal,item,{scope,scopeId,reason}){
   let quantity=null;if(item.entryMode!=='amount'){try{quantity=inventoryText(inventoryDecimal(item.quantity));}catch{/* Requiere cantidad física confirmada. */}}
-  await c.query('INSERT INTO inventory_pending(id,sale_id,ordinal,product_id,scope,scope_id,quantity,unit,reason,fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[randomUUID(),String(sale.id),ordinal,String(item.productId),scope,String(scopeId),quantity,normalizeUnit(item.unit),reason,digest(item)]);
+  await c.query('INSERT INTO inventory_pending(id,sale_id,ordinal,product_id,scope,scope_id,quantity,unit,reason,fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[randomUUID(),String(sale.id),ordinal,item.productId==null?null:String(item.productId),scope,String(scopeId),quantity,normalizeUnit(item.unit),reason,digest(item)]);
 }

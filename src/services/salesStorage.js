@@ -16,8 +16,8 @@ export function validateSales(sales) {
         if (sale.folio) folios.add(sale.folio);
         const products = new Set();
         for (const item of sale.items) {
-            if (!item || item.productId == null || products.has(String(item.productId)) || typeof item.name !== "string" || !normalizeUnit(item.unit) || !amount(item.price) || !Number.isFinite(item.quantity) || item.quantity <= 0 || !amount(item.amount)) throw new Error("Hay un renglón de venta inválido. Se conservó el historial original.");
-            products.add(String(item.productId));
+            if (!item || (item.productId == null && !(['line','category','priceGroup'].includes(item.reference?.kind) && item.reference?.id != null)) || products.has(item.id || String(item.productId)) || typeof item.name !== "string" || !normalizeUnit(item.unit) || !amount(item.price) || !Number.isFinite(item.quantity) || item.quantity <= 0 || !amount(item.amount)) throw new Error("Hay un renglón de venta inválido. Se conservó el historial original.");
+            products.add(item.id || String(item.productId));
         }
         if (Math.abs(sale.total - sale.items.reduce((sum, i) => sum + i.amount, 0)) > 0.011) throw new Error("El total de una venta no coincide con sus renglones.");
     }
@@ -65,7 +65,7 @@ export function createSale(sales, input, catalog, legacySequence = 0) {
     const highest = sales.reduce((max, sale) => Math.max(max, Number(String(sale.folio || "").replace(/^V-/, "")) || 0), 0);
     const sequence = Math.max(highest, Number.isSafeInteger(Number(legacySequence)) && Number(legacySequence) >= 0 ? Number(legacySequence) : 0) + 1;
     if (!Number.isSafeInteger(sequence)) throw new Error("La secuencia de folios está fuera de rango.");
-    const sale = { id: crypto.randomUUID(), folio: `V-${String(sequence).padStart(5, "0")}`, date: input.date, payment: input.payment, notes: input.notes?.trim() || "", items, total: Math.round(items.reduce((sum, i) => sum + i.amount, 0) * 100) / 100, createdAt: new Date().toISOString() };
+    const sale = { id: crypto.randomUUID(), folio: `V-${String(sequence).padStart(5, "0")}`, date: input.date, payment: input.payment, notes: input.notes?.trim() || "", origin: "WEB", history: [{ action: "created", channel: "WEB", at: new Date().toISOString() }], items, total: Math.round(items.reduce((sum, i) => sum + i.amount, 0) * 100) / 100, createdAt: new Date().toISOString() };
     const next = [sale, ...sales];
     validateSales(next);
     return next;
