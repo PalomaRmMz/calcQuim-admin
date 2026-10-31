@@ -39,8 +39,13 @@ export default function SalesPage() {
     const committed = useRef(state);
     const sales = persistence?.snapshot.data.sales ?? state.sales;
     const [creating, setCreating] = useState(false);
-    const [selected, setSelected] = useState(null);
-    useEffect(()=>{if(selected){const fresh=sales.find(s=>s.id===selected.id);if(fresh&&fresh!==selected)setSelected(fresh);}},[sales,selected]);
+    const [selectedSnapshot, setSelected] = useState(null);
+    const selected = selectedSnapshot
+        ? sales.find(sale => sale.id === selectedSnapshot.id) || selectedSnapshot
+        : null;
+    // Remember the last known version if a later snapshot omits the sale.
+    // React restarts this render before committing; no effect-driven update.
+    if (selected !== selectedSnapshot) setSelected(selected);
     const detailGroups = new Map();
     for (const item of selected?.items || []) {
         const product = products.find((entry) => entry.id === item.productId);

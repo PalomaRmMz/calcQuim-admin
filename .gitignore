@@ -74,3 +74,14 @@ dump-*.sql
 **/operational.env
 **/test.env.test
 **/*env copy.example
+
+# Local tool caches and credentials (source examples remain versionable).
+**/.cache/
+**/.vite*/
+**/.npm-cache/
+*.apk
+*.aab
+*.keystore
+*.jks
+credentials.json
+**/*.private.xml

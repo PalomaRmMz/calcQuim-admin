@@ -2,8 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { readFile,mkdir,writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { extname } from 'node:path';
+import { createHash } from 'node:crypto';
 const root=fileURLToPath(new URL('../',import.meta.url));
-const git=(...args)=>execFileSync('git',['-c','core.quotepath=false',...args],{cwd:root,encoding:'utf8',windowsHide:true});
+const git=(...args)=>execFileSync('git',['-c','core.quotepath=false',...args],{cwd:root,encoding:'utf8',windowsHide:true,maxBuffer:16*1024*1024});
 const paths=(...args)=>git(...args,'-z').split('\0').filter(Boolean);
 const tracked=paths('ls-files'),untracked=paths('ls-files','--others','--exclude-standard'),modified=paths('diff','--name-only'),staged=paths('diff','--cached','--name-only');
 const candidates=[...new Set([...modified,...untracked,...staged])].sort();
@@ -13,7 +14,10 @@ function scan(path,text,location){
   if((/(^|\/)(node_modules|dist|coverage|artifacts|\.postman)\//.test(path)||/\.(private\.json|dump|backup|log)$/.test(path)||/(^|\/)\.env(?:\.|$)/.test(path))&&!path.endsWith('.example'))reasons.push('PRIVATE_OR_GENERATED_PATH');
   if(/postgres(?:ql)?:\/\/[^\s:/]+:[^\s@]+@/.test(text)||/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(text))reasons.push('CONNECTION_OR_PRIVATE_KEY');
   if(/^[\t ]*PGPASSWORD[\t ]*=[\t ]*(?![\t ]*(?:#|$|""[\t ]*$|''[\t ]*$))[^\r\n]+/m.test(text))reasons.push('NONEMPTY_PASSWORD_ASSIGNMENT');
-  if(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]{150,}/.test(text))reasons.push('EMBEDDED_IMAGE');
+  const embedded=[...text.matchAll(/data:image\/[^;]+;base64,([A-Za-z0-9+/=]{150,})/g)];
+  // Exact original brand asset, also verified by the mobile ticket regression tests.
+  const officialLogoHash='7e7f1cef5be8e3f9b46c167e1b8d8f425caf0f825de043afd71610a6836571ac';
+  if(embedded.some(match=>path!=='src/domain/mobileReceipt/logo.mjs'||createHash('sha256').update(Buffer.from(match[1],'base64')).digest('hex')!==officialLogoHash))reasons.push('EMBEDDED_IMAGE');
   if(/^-- PostgreSQL database dump\r?$/m.test(text))reasons.push('SQL_DATABASE_DUMP');
   if(/(?:ghp_[A-Za-z0-9]{30,}|AKIA[A-Z0-9]{16}|sk-proj-[A-Za-z0-9_-]{30,})/.test(text))reasons.push('TOKEN_PATTERN');
   if(reasons.length)findings.push({path,location,reasons});

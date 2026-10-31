@@ -1,6 +1,6 @@
 # Git, inicio local y respaldos
 
-La propuesta de commit se prepara sin `git add`, sin modificar el índice y sin ejecutar commit ni push. La rama activa es `dev`. El resumen automático privado contiene la lista completa de candidatos, los grupos de archivos, los hallazgos y el estado del índice.
+La propuesta de commit se prepara sin `git add`, sin modificar el índice y sin ejecutar commit ni push. La rama activa se consulta con `git branch --show-current`; no se cambia automáticamente. El resumen automático privado contiene la lista completa de candidatos, los grupos de archivos, los hallazgos y el estado del índice.
 
 ## Revisar antes de autorizar el commit
 
