@@ -1,3 +1,4 @@
+import {saleCapturedAt,saleLastChangedAt,saleMoment} from '../services/saleAuditView.mjs';
 import MobileSaleCorrection from '../components/MobileSaleCorrection';
 import MobileSaleBreakdown from '../components/MobileSaleBreakdown';
 import ModalHeader from "../components/ModalHeader";
@@ -104,10 +105,11 @@ export default function SalesPage() {
     if (state.error) return <><Feedback message={state.error} /><Link to="/administracion/datos">Datos y respaldos</Link></>;
 
     const columns = [
-        { accessorKey: "origin", header: "Origen", Cell: ({ cell }) => cell.getValue() || "Sin dato histórico" },
+        { accessorKey: "origin", header: "Origen", Cell: ({ cell }) => ({MOVIL:"Móvil",WEB:"Web"}[cell.getValue()]||"Sin dato histórico") },
         { id: "breakdown", header: "Desglose", accessorFn: sale => sale.items.some((i,n) => i.pendingBreakdown && !sale.breakdowns?.[n]) ? "Pendiente" : "Completo" },
         { accessorKey: "folio", header: "Folio", size: 120 },
-        { accessorKey: "date", header: "Fecha", Cell: ({ cell }) => new Date(`${cell.getValue()}T12:00:00`).toLocaleDateString("es-MX") },
+        { id:"capturedAt", header:"Fecha y hora", accessorFn:sale=>saleCapturedAt(sale)||sale.date, Cell:({row})=>saleMoment(saleCapturedAt(row.original),row.original.date) },
+        { id:"lastChangedAt", header:"Última modificación", accessorFn:sale=>saleLastChangedAt(sale)||"", Cell:({row})=>saleMoment(saleLastChangedAt(row.original)) },
         { accessorKey: "payment", header: "Método de pago" },
         { accessorKey: "total", header: "Total", Cell: ({ cell }) => <span className="table-money">{money(cell.getValue())}</span> },
         { id: "status", header: "Estado", accessorFn: sale => sale.voidedAt ? "Anulada" : "Registrada" },

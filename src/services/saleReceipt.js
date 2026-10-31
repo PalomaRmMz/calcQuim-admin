@@ -1,7 +1,1 @@
-﻿import { money } from '../utils/salesUtils.js';
-export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-export function ticketHtml(receipt) {
-  if (receipt?.status !== 'confirmed') throw new Error('Solo se comparte una venta confirmada.');
-  return `<!doctype html><html lang="es"><meta charset="utf-8"><style>body{font:16px Arial;color:#142c3e;padding:28px}h1{font-size:24px}td{padding:12px 4px;border-bottom:1px solid #ddd}table{width:100%}.total{font-size:34px;font-weight:bold}small{color:#536270}</style><h1>Full Clean Home &amp; Laundry</h1><p>Resumen de venta Â· ${escapeHtml(receipt.folio)}</p><p>${escapeHtml(new Date(receipt.createdAt).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }))} Â· Confirmada</p><p>${receipt.corrected ? `Ticket actualizado Â· VersiÃ³n ${escapeHtml(receipt.version)}` : 'Ticket original'}</p><table>${receipt.items.map(i => `<tr><td>${escapeHtml(i.name)}<br><small>${escapeHtml(i.entryMode === 'amount' ? 'â‰ˆ ' + Number(i.quantity.toFixed(6)) : i.quantity)} ${escapeHtml(i.unit)} Â· ${money(i.price)} / ${escapeHtml(i.unit)}${i.discountRate ? ' Â· Mayoreo âˆ’15%' : ''}</small></td><td>${money(i.amount)}</td></tr>`).join('')}</table><p>Total MXN</p><p class="total">${money(receipt.total)}</p><small>Comprobante comercial informativo. No es factura fiscal.</small></html>`;
-}
-
+export { ticketHtml, escapeHtml, ticketModel } from '../domain/mobileReceipt/ticket.mjs';

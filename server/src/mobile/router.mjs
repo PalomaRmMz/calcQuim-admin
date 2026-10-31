@@ -2,6 +2,7 @@ import { Router, json } from 'express';
 import { timingSafeEqual } from 'node:crypto';
 import { ApiError } from '../services/commands.mjs';
 import { PRICING_VERSION } from './catalog.mjs';
+import { commercialChoices } from './commercial.mjs';
 const authorized = (provided, expected) => expected.length >= 32 && Buffer.byteLength(provided) === Buffer.byteLength(expected) && timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
 export function mobileRouter(service, { mode = 'synthetic', token = '', enabled = false } = {}) {
   const r = Router();
@@ -12,7 +13,7 @@ export function mobileRouter(service, { mode = 'synthetic', token = '', enabled 
   }, json({ limit: '256kb' }));
   r.get('/catalog', async (_req, res) => {
     const s = await service.read();
-    res.json({ data: Object.fromEntries(['categories', 'productLines', 'priceGroups', 'products'].map(k => [k, s.data[k]])), revision: s.revision, generation: s.generation, pricingVersion: PRICING_VERSION, environment:mode, salesEnabled:true, generatedAt: new Date().toISOString() });
+    res.json({ commercialOptions: commercialChoices(s.data), commercialOptionsVersion: 'official-relations-v1', data: Object.fromEntries(['categories', 'productLines', 'priceGroups', 'products'].map(k => [k, s.data[k]])), revision: s.revision, generation: s.generation, pricingVersion: PRICING_VERSION, environment:mode, salesEnabled:true, generatedAt: new Date().toISOString() });
   });
   r.get('/sales/status/:key', async (req, res) => {
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(req.params.key)) throw new ApiError(400, 'INVALID_KEY', 'Clave inválida.');
