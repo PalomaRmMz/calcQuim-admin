@@ -25,7 +25,7 @@ export function exactSaleQuantity(item, product, origin) {
   }catch{return null;}
 }
 
-export const inventoryCommands=['inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase'];
+export const inventoryCommands=['inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase','resolveSaleBreakdowns'];
 const fail=(message,code='INVENTORY_VALIDATION')=>{throw new ApiError(422,code,message);};
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const findProduct=(data,id)=>{const p=data.products.find(p=>String(p.id)===String(id));if(!p)fail('Selecciona un producto existente.');return p;};
@@ -75,6 +75,18 @@ export async function executeInventoryCommand(c,data,name,args){
   if(!await inventoryAvailable(c))throw new ApiError(503,'INVENTORY_NOT_ENABLED','Inventario pendiente de migración autorizada.');
   if(!Array.isArray(args)||args.length!==1||!args[0]||typeof args[0]!=='object'||Array.isArray(args[0]))fail('Se requiere un formulario de inventario.');
   const input=args[0];
+  if(name==='resolveSaleBreakdowns'){
+    const sale=data.sales.find(s=>String(s.id)===String(input.saleId));
+    if(!sale||sale.voidedAt)fail('Selecciona una venta vigente.');
+    if(!Array.isArray(input.rows)||!input.rows.length||input.rows.length>200)fail('Selecciona al menos un renglón para completar.');
+    const ids=input.rows.map(row=>uuid(row?.pendingId));
+    if(new Set(ids).size!==ids.length)fail('No repitas un renglón.');
+    const pending=(await c.query("SELECT id FROM inventory_pending WHERE sale_id=$1 AND state='pending' AND id=ANY($2::uuid[]) FOR UPDATE",[String(sale.id),ids])).rows;
+    if(pending.length!==ids.length)fail('Los pendientes de esta venta cambiaron. Actualiza antes de guardar.');
+    for(const row of input.rows)await allocate(c,data,{...row,reasonCode:'sale_allocation',observations:input.observations});
+    await inventoryChange(c,'sale_breakdowns_completed',{saleId:sale.id,pendingIds:ids,count:ids.length});
+    return {completed:ids.length};
+  }
   if(['inventoryInitial','inventoryCount','inventoryCorrectInitial'].includes(name)){
     const product=findProduct(data,input.productId),current=(await readInventory(c,data)).products.find(p=>String(p.productId)===String(product.id));
     if(name==='inventoryInitial'){

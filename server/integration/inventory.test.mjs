@@ -176,6 +176,25 @@ test('inventario íntegro en esquema nuevo y datos exclusivamente sintéticos',a
       assert.equal(movements[0].reference.quantityEvidence,'web_amount_rounded_1_decimal');
       assert.ok(Math.abs(Number((await stock(1)).quantity)-(Number(before.quantity)-1.3))<1e-8);
     });
+    await t.test('desglose de varios renglones: rollback completo, folio e idempotencia',async()=>{
+      await command('createSale',{date:localDate(),payment:'Efectivo',items:[{productId:1,price:10,unit:'litro',quantity:1},{productId:2,price:10,unit:'litro',quantity:2}],inventory:{1:{pendingGroup:true,scope:'line'},2:{pendingGroup:true,scope:'line'}}});
+      const sale=structuredClone(state.data.sales[0]),before=await service.inventory();
+      const pending=before.pending.filter(p=>p.sale_id===sale.id).sort((a,b)=>a.ordinal-b.ordinal);
+      const rows=pending.map((p,n)=>({pendingId:p.id,allocations:[{productId:n+1,quantity:String(n+1),unit:'litro'}]}));
+      const bad=structuredClone(rows);bad[1].allocations[0].quantity='3';
+      await assert.rejects(command('resolveSaleBreakdowns',{saleId:sale.id,rows:bad}));
+      assert.deepEqual(await service.inventory(),before);
+      await assert.rejects(command('resolveSaleBreakdowns',{saleId:sale.id,rows:[rows[0],rows[0]]}));
+      await assert.rejects(command('resolveSaleBreakdowns',{saleId:state.data.sales[1].id,rows}));
+      assert.deepEqual(await service.inventory(),before);
+      const request={name:'resolveSaleBreakdowns',args:[{saleId:sale.id,rows,observations:'Desglose sintetico por lote'}],revision:state.revision,generation:state.generation,requestKey:randomUUID()};
+      const first=await service.command(request),replay=await service.command(request);state=await service.read();
+      assert.equal(first.result.completed,2);assert.equal(replay.replayed,true);
+      const after=await service.inventory();
+      assert.equal(after.pending.filter(p=>p.sale_id===sale.id&&p.state==='pending').length,0);
+      assert.equal(after.movements.filter(m=>m.sale_id===sale.id&&m.kind==='sale').length,2);
+      assert.equal(state.data.sales[0].total,sale.total);assert.deepEqual(state.data.sales[0].items,sale.items);
+    });
     await t.test('dump y restauración incluyen historial, pendientes, reversas y configuración íntegros',async()=>{
       await runtime.close();runtime=null;
       const before=await service.inventory(),snapshot=await service.read();

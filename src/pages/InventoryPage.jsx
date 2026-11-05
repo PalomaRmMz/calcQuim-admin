@@ -1,7 +1,6 @@
 import { useContext,useEffect,useState } from 'react';
 import { PersistenceContext } from '../context/PersistenceContext.js';
 import { useCatalog } from '../context/CatalogHooks.js';
-import { Link } from 'react-router';
 import ContentPanel from '../components/ContentPanel';
 import InventoryProductList from '../components/InventoryProductList';
 import InventoryProductModal from '../components/InventoryProductModal';
@@ -10,7 +9,6 @@ import InventoryReasonFields from '../components/InventoryReasonFields';
 import InventoryReasonSummary from '../components/InventoryReasonSummary';
 import { emptyInventoryReason,inventoryReasonPayload } from '../services/inventoryReasons.js';
 import { saveInventory } from '../services/inventoryClient.js';
-import { pendingSaleLabel } from '../services/pendingSalePresentation.js';
 
 export default function InventoryPage(){
     const persistence=useContext(PersistenceContext),catalog=useCatalog();
@@ -38,7 +36,6 @@ export default function InventoryPage(){
         <ContentPanel title="Inventario de productos" subtitle="Selecciona un producto o pulsa Editar para abrir su ficha de inventario.">
             <InventoryProductList rows={rows} categories={catalog.categories} productLines={catalog.productLines} onSelect={setSelectedId}/>
         </ContentPanel>
-        <section className="card p-3 mb-3"><h3 className="h6">Ventas pendientes de inventario</h3><p>Completa los productos entregados desde el detalle de cada folio.</p>{view.pending.filter(p=>p.state==='pending').map(p=><div key={p.id}><Link to={`/ventas?folio=${encodeURIComponent(persistence.snapshot.data.sales.find(s=>String(s.id)===String(p.sale_id))?.folio||'')}`}>{pendingSaleLabel(p,persistence.snapshot.data.sales)} ? Abrir venta</Link></div>)}</section>
         {view.purchaseReviews.length>0&&<section className="alert alert-warning"><h3 className="h6">Recepciones por revisar tras cambios en compras</h3><InventoryReasonFields context="purchase_review" value={reviewReason} onChange={setReviewReason} idPrefix="purchase-review" disabled={busy}/>{view.purchaseReviews.map(p=><div key={p.purchaseId}>{p.date} · {p.voided?'Compra anulada':'Compra editada'} <button disabled={busy||!reviewReason.reasonCode||(reviewReason.reasonCode==='other'&&!reviewReason.reasonExplanation.trim())} onClick={()=>{const metadata=reasonData(reviewReason,'purchase_review');if(metadata)save('inventoryReviewPurchase',{purchaseId:p.purchaseId,...metadata});}}>Confirmar revisión con el motivo capturado</button><p>No se revierte mercancía automáticamente; registra el ajuste físico si corresponde.</p></div>)}</section>}
         <details className="card p-3 mt-3"><summary>Historial de configuración y confirmaciones</summary><table className="table"><thead><tr><th>Fecha</th><th>Acción</th><th>Referencia</th><th>Motivo</th></tr></thead><tbody>{view.changes.map(change=><tr key={change.seq}><td>{new Date(change.recorded_at).toLocaleString('es-MX')}</td><td>{kinds[change.action]||({initial_classification:'Inventario inicial regularizado',replenishment:'Reposición configurada',allocation:'Desglose confirmado',sale_void:'Anulación y destino físico',reversal:'Compensación',purchase_review_required:'Revisión de recepción pendiente',purchase_review_confirmed:'Recepción revisada'}[change.action]??'Confirmación')}</td><td>{view.products.find(p=>String(p.productId)===String(change.reference.productId))?.name||persistence.snapshot.data.sales.find(s=>s.id===change.reference.saleId)?.folio||''}{change.action==='replenishment'&&<small className="d-block">Umbral: {change.reference.previous?.minimum??'Sin configurar'} → {change.reference.next.minimum??'Sin configurar'}; lote habitual: {change.reference.next.batch??'Sin configurar'} {change.reference.next.unit}</small>}</td><td><InventoryReasonSummary reference={change.reference} legacyReason={change.reference.reason||view.movements.find(m=>m.id===change.reference.movementId)?.reason||'Seguimiento de la operacion'}/></td></tr>)}</tbody></table></details>
         {selectedId!==null&&view.products.some(p=>p.productId===selectedId)&&<InventoryProductModal key={selectedId} product={view.products.find(p=>p.productId===selectedId)} view={view} data={persistence.snapshot.data} categories={catalog.categories} productLines={catalog.productLines} onClose={()=>setSelectedId(null)} onSave={async(name,input)=>{setNotice('');const result=await saveInventory(persistence.command,name,input,refresh);if(result.ok)setNotice(result.viewWarning||'Guardado en PostgreSQL.');return result;}}/>}

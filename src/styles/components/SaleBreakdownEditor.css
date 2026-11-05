@@ -1,0 +1,26 @@
+.sale-breakdown-editor { margin: 18px 0; padding: 18px; border: 1px solid #dce5f1; border-radius: 12px; background: #f8faff; }
+.sale-breakdown-heading { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 14px; }
+.sale-breakdown-heading h3 { font-size: 17px; margin: 0 0 5px; }
+.sale-breakdown-heading p { color: #64748b; font-size: 13px; margin: 0; }
+.sale-breakdown-heading > span { border-radius: 20px; background: #fff1ce; color: #735208; padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+.sale-breakdown-fields { min-width: 0; }
+.sale-breakdown-card { padding: 14px; border: 1px solid #dce5f1; border-radius: 9px; background: white; margin-bottom: 12px; }
+.sale-breakdown-card header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; }
+.sale-breakdown-card header label { display: flex; align-items: center; gap: 8px; }
+.sale-breakdown-card header span { color: #64748b; font-size: 13px; }
+.sale-breakdown-inputs { display: grid; grid-template-columns: minmax(0,1fr) minmax(100px,140px) auto; gap: 10px; align-items: end; }
+.sale-breakdown-inputs label { min-width: 0; font-size: 13px; }
+.sale-breakdown-allocation + .sale-breakdown-allocation { margin-top: 12px; }
+.sale-breakdown-baseline { margin-top: 10px; padding: 10px; background: #fff9e9; border-radius: 6px; font-size: 13px; }
+.sale-breakdown-baseline p { margin-bottom: 6px; }
+.sale-breakdown-error { border-color: #c33838; }
+.sale-breakdown-notes { font-size: 13px; margin: 14px 0; }
+.sale-breakdown-editor footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.sale-breakdown-editor footer small { color: #64748b; }
+@media (max-width: 600px) {
+  .sale-breakdown-editor { padding: 12px; }
+  .sale-breakdown-heading { flex-wrap: wrap; }
+  .sale-breakdown-inputs { grid-template-columns: minmax(0,1fr) 100px; }
+  .sale-breakdown-inputs button { grid-column: 1 / -1; justify-self: end; }
+  .sale-breakdown-editor footer .btn { width: 100%; }
+}
