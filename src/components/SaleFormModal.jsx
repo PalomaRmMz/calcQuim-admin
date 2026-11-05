@@ -11,6 +11,7 @@ import { calculateItems, localDate, money } from "../utils/salesUtils";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCartShopping, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import "../styles/components/SaleFormModal.css";
+import { productRates, WHOLESALE_VERSION } from '../domain/wholesalePricing.mjs';
 
 const filterProducts = createFilterOptions({
     limit: 30,
@@ -18,7 +19,7 @@ const filterProducts = createFilterOptions({
 });
 
 export default function SaleFormModal({ onClose, onSave,inventoryEnabled=false }) {
-    const { products, categories, productLines, priceGroups, getProductPrice, isProductAvailable } = useCatalog();
+    const { products, categories, productLines, priceGroups, getProductPrice, isProductAvailable, wholesalePricing } = useCatalog();
     const [productSearch, setProductSearch] = useState("");
     const [date, setDate] = useState(localDate);
     const [payment, setPayment] = useState("Efectivo");
@@ -51,12 +52,18 @@ export default function SaleFormModal({ onClose, onSave,inventoryEnabled=false }
                 ? { id: `category-${product.categoryId}`, name: categoryNames.get(product.categoryId), colorId: product.categoryId }
                 : unclassified,
     ]));
-    const calculated = calculateItems(items.map(item => { const product = products.find(p => p.id === item.productId); return product ? { ...item, price: getProductPrice(product), name: getProductDisplayName(product, categories, productLines) } : item; })).sort((a, b) => {
+    const currentItems = items.map(item => { const product = products.find(p => p.id === item.productId); const current = product ? { ...item, price: getProductPrice(product), name: getProductDisplayName(product, categories, productLines), ...(wholesalePricing ? {...productRates(product,priceGroups),pricingVersion:WHOLESALE_VERSION,amountPolicy:wholesalePricing.amountPolicy} : {}) } : item;
+        return current;
+    });
+    let calculated;
+    try {calculated=calculateItems(currentItems);}catch(error){calculated=currentItems.map(item=>({...item,quantity:0,amount:0,pricingError:error.message}));}
+    calculated.sort((a, b) => {
         const groupA = productGroups.get(a.productId) || unclassified;
         const groupB = productGroups.get(b.productId) || unclassified;
         const groupOrder = groupA.name.localeCompare(groupB.name, "es", { sensitivity: "base" });
         return groupOrder || groupA.id.localeCompare(groupB.id) || a.name.localeCompare(b.name, "es", { sensitivity: "base" });
     });
+    const pricingError = calculated.find(item=>item.pricingError)?.pricingError || '';
     const groupedItems = [];
     for (const item of calculated) {
         const group = productGroups.get(item.productId) || unclassified;
@@ -74,6 +81,7 @@ export default function SaleFormModal({ onClose, onSave,inventoryEnabled=false }
     async function submit(event) {
         event.preventDefault();
         if (!items.length) return setError("Agrega al menos un producto.");
+        if (pricingError) return setError(pricingError);
         if (!date || date > localDate()) return setError("Selecciona una fecha válida que no sea futura.");
         if (calculated.some((item) => !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.amount)) || !Number.isFinite(total)) return setError("Todas las cantidades deben ser mayores que cero y válidas.");
         if (items.some((item) => !available.some((product) => product.id === item.productId))) return setError("Un producto ya no está disponible. Retíralo para continuar.");
@@ -147,10 +155,13 @@ export default function SaleFormModal({ onClose, onSave,inventoryEnabled=false }
                             <span className="input-group-text">{item.entryMode === "amount" ? "MXN" : item.unit}</span>
                         </div>
                         <FieldError id={`sale-value-${item.productId}`} />
-                        {item.entryMode === "amount" && <small className="d-block text-muted">≈ {Number(item.quantity.toFixed(3))} {item.unit}</small>}
+                        {item.entryMode==='amount'&&wholesalePricing&&(pricingError||item.confirmedQuantity)&&<label className="d-block small">Cantidad física para resolver tarifa ({item.unit})<input aria-label={`Cantidad física confirmada de ${item.name}`} className="form-control" type="number" min="0.000001" step="0.000001" value={items.find(entry=>entry.productId===item.productId)?.confirmedQuantity??''} onChange={e=>setItems(items.map(entry=>entry.productId===item.productId?{...entry,confirmedQuantity:e.target.value}:entry))}/><span className="text-muted">Se conserva el importe capturado.</span></label>}
+                        {item.entryMode === "amount" && <small className="d-block text-muted">≈ {item.quantity.toFixed(1)} {item.unit} ? Inventario redondeado a 1 decimal</small>}
                     </td>
                     <td className="text-nowrap text-end">
                         {money(item.amount)}
+                        {item.priceTier === 'wholesale' && <small className="sale-wholesale">Mayoreo · {money(item.price)} / {item.unit}</small>}
+                        {item.pricingWarning && <small className="d-block text-warning">{item.pricingWarning}</small>}
                         {item.discountRate > 0 && <small className="sale-wholesale" title={`Importe original: ${money(item.subtotal)}. Descuento: ${money(item.discount)}`}>Mayoreo −15%</small>}
                     </td>
                     <td><button type="button" className="sale-remove" aria-label={`Quitar ${item.name}`} title="Quitar producto" onClick={() => setItems(items.filter((entry) => entry.productId !== item.productId))}><FontAwesomeIcon icon={faTrashCan} /></button></td>
@@ -160,7 +171,7 @@ export default function SaleFormModal({ onClose, onSave,inventoryEnabled=false }
                     <summary>Notas (opcional)</summary>
                     <div><label htmlFor="saleNotes" className="form-label">Notas <span className="text-muted fw-normal">(opcional)</span></label><textarea id="saleNotes" className="form-control" placeholder="Agrega una observación sobre esta venta…" rows={2} maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
                 </details>
-                {error && <div className="alert alert-danger" role="alert">{error}</div>}
+                {(error || pricingError) && <div className="alert alert-danger" role="alert">{error || pricingError}</div>}
             </DialogContent>
             <DialogActions className="sale-modal-actions"><div className="sale-footer-total"><span>Total</span><strong>{money(total)}</strong></div><Button onClick={onClose} color="inherit">Cancelar</Button><Button type="submit" variant="contained" disableElevation disabled={!items.length}>Registrar venta</Button></DialogActions>
         </ValidatedForm>

@@ -1,1 +1,1 @@
-export { calculateItems } from '../../../src/utils/salesUtils.js';
+export { calculateItems, calculateHistoricalItems } from '../../../src/utils/salesUtils.js';

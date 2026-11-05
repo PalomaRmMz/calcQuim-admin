@@ -1,5 +1,6 @@
 import { normalizeText } from "../utils/catalogUtils.js";
 import { normalizeUnit } from "../utils/units.js";
+import { validWholesalePrice } from '../domain/wholesalePricing.mjs';
 
 export const parseCatalogPrice = value => value == null || !["string", "number"].includes(typeof value) || String(value).trim() === "" || !Number.isFinite(Number(value)) || Number(value) < 0 ? null : Number(value);
 export const catalogId = value => value == null || value === "" ? null : Number(value);
@@ -22,6 +23,11 @@ export function catalogCollectionError(key, entries) {
         for (const field of ["active", "available", "useAsProductPrefix"]) if (entry[field] != null && typeof entry[field] !== "boolean") return `El estado ${field} no es válido.`;
         if (key.endsWith("_products") && !normalizeUnit(entry.unit)) return "Hay un producto con unidad desconocida.";
         if (entry.price != null && parseCatalogPrice(entry.price) === null) return "Hay un precio inválido.";
+        if (entry.wholesalePrice != null) {
+            try { validWholesalePrice(entry.wholesalePrice, entry.price); }
+            catch (error) { return error.message; }
+            if (key.endsWith('_products') && (entry.priceGroupId != null || normalizeUnit(entry.unit) !== 'litro')) return 'El mayoreo individual requiere precio individual por litro.';
+        }
         if (key.endsWith("_price_groups") && parseCatalogPrice(entry.price) === null) return "El grupo necesita un precio válido.";
         if (entry.priceGroupId != null && entry.price != null) return "Un producto tiene simultáneamente grupo y precio individual. Revisa el dato original.";
     }
@@ -34,7 +40,8 @@ export function normalizeCatalogRecord(entry) {
     return next;
 }
 
-export function catalogProductPrice(product, priceGroups) {
+export function catalogProductPrice(product, priceGroups, preferIndividual = false) {
+    if (preferIndividual && product?.price != null) return parseCatalogPrice(product.price);
     if (product?.priceGroupId != null) {
         const group = priceGroups.find(g => String(g.id) === String(product.priceGroupId));
         return group?.active === false ? null : parseCatalogPrice(group?.price);

@@ -25,10 +25,12 @@ import "../styles/components/SaleDetailModal.css";
 import { loadSales, persistSales, createSale, voidSale } from "../services/salesStorage.js";
 import { getBadgeStyle } from "../utils/classificationUtils.js";
 import Feedback from "../components/Feedback";
-import { Link } from "react-router";
+import { Link,useSearchParams } from "react-router";
 
 export default function SalesPage() {
     const persistence = useContext(PersistenceContext);
+    const [searchParams]=useSearchParams();
+    const requestedFolio=searchParams.get("folio");
     const catalog = useCatalog();
     const { products, categories, productLines } = catalog;
     const [state, setState] = useState(() => {
@@ -39,7 +41,7 @@ export default function SalesPage() {
     const committed = useRef(state);
     const sales = persistence?.snapshot.data.sales ?? state.sales;
     const [creating, setCreating] = useState(false);
-    const [selectedSnapshot, setSelected] = useState(null);
+    const [selectedSnapshot, setSelected] = useState(()=>requestedFolio?sales.find(s=>s.folio===requestedFolio)||null:null);
     const selected = selectedSnapshot
         ? sales.find(sale => sale.id === selectedSnapshot.id) || selectedSnapshot
         : null;
@@ -75,7 +77,9 @@ export default function SalesPage() {
         const timeout = window.setTimeout(() => setNotice(""), 4000);
         return () => window.clearTimeout(timeout);
     }, [notice, sales]);
-    const filtered = sales.filter((sale) => (!origin || sale.origin === origin) && (!onlyPending || sale.items.some((i,n) => i.pendingBreakdown && !sale.breakdowns?.[n])) && (!from || sale.date >= from) && (!to || sale.date <= to));
+    const inventoryPending=persistence?.snapshot.inventoryPending;
+    const hasPending=sale=>Array.isArray(inventoryPending)?inventoryPending.some(p=>String(p.saleId)===String(sale.id)):sale.items.some((item,n)=>item.pendingBreakdown&&!sale.breakdowns?.[n]);
+    const filtered = sales.filter((sale) => (!origin || sale.origin === origin) && (!onlyPending || hasPending(sale)) && (!from || sale.date >= from) && (!to || sale.date <= to));
     const valid = filtered.filter(s => !s.voidedAt);
     const total = valid.reduce((sum, sale) => sum + sale.total, 0);
     const todayTotal = sales.filter((sale) => !sale.voidedAt && sale.date === localDate()).reduce((sum, sale) => sum + sale.total, 0);
@@ -95,7 +99,7 @@ export default function SalesPage() {
     }
     async function saveSale(data) {
         const result = persistence ? await persistence.command('createSale',[data]) : commit(sales => createSale(sales, data, catalog, localStorage.getItem(STORAGE_KEYS.salesSequence)));
-        if (result.ok) setNotice("Venta registrada correctamente.");
+        if (result.ok) {const saved=result.snapshot?.data.sales[0];const pending=result.snapshot?.inventoryPending?.some(p=>String(p.saleId)===String(saved?.id));setNotice(pending?'Venta registrada. Inventario pendiente: confirma la cantidad física o el desglose en Inventario.':'Venta registrada correctamente.');}
         return result;
     }
     async function deleteSale() {
@@ -111,9 +115,9 @@ export default function SalesPage() {
 
     const columns = [
         { accessorKey: "origin", header: "Origen", Cell: ({ cell }) => ({MOVIL:"Móvil",WEB:"Web"}[cell.getValue()]||"Sin dato histórico") },
-        { id: "breakdown", header: "Desglose", accessorFn: sale => sale.items.some((i,n) => i.pendingBreakdown && !sale.breakdowns?.[n]) ? "Pendiente" : "Completo" },
+        { id: "breakdown", header: "Inventario / desglose", accessorFn: sale => hasPending(sale) ? "Pendiente" : "Completo" },
         { accessorKey: "folio", header: "Folio", size: 120 },
-        { id:"capturedAt", header:"Fecha y hora", accessorFn:sale=>saleCapturedAt(sale)||sale.date, Cell:({row})=>saleMoment(saleCapturedAt(row.original),row.original.date) },
+        { accessorKey:"date", header:"Fecha de venta", Cell:({row})=>saleMoment(null,row.original.date) },
         { id:"lastChangedAt", header:"Última modificación", accessorFn:sale=>saleLastChangedAt(sale)||"", Cell:({row})=>saleMoment(saleLastChangedAt(row.original)) },
         { accessorKey: "payment", header: "Método de pago" },
         { accessorKey: "total", header: "Total", Cell: ({ cell }) => <span className="table-money">{money(cell.getValue())}</span> },
@@ -147,12 +151,13 @@ export default function SalesPage() {
                 <dl className="sale-detail-meta">
                     <div><dt>Estado</dt><dd>{selected.voidedAt ? "Anulada" : "Registrada"}</dd></div><div><dt>Fecha de venta</dt><dd>{new Date(`${selected.date}T12:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" })}</dd></div>
                     <div><dt>Método de pago</dt><dd>{selected.payment}</dd></div>
+                    <div><dt>Fecha de captura</dt><dd>{saleMoment(saleCapturedAt(selected))}</dd></div>
                     
                 </dl>
                 <div className="sale-section-heading"><h3>Productos de la venta</h3><span>{selected.items.length} productos</span></div><div className="table-responsive sale-items"><table className="table align-middle"><thead><tr><th>Producto</th><th>Vender por</th><th>Valor</th><th className="text-end">Importe</th></tr></thead>{sortedDetailGroups.map((group) => <tbody key={group.id}>
                     <tr className="sale-group-heading"><th scope="rowgroup" colSpan={4} style={getBadgeStyle(group.colorId) || { backgroundColor: "#f1f3f5", color: "#6c757d" }}>{group.name}</th></tr>
-                    {group.items.map((item) => <tr key={item.id || item.productId}><td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small></td><td><div className="d-flex flex-nowrap align-items-center gap-3" role="group" aria-label={`Modo de venta de ${item.name}`}>{[{ value: "quantity", label: "Por cantidad" }, { value: "amount", label: "Por monto" }].map((mode) => <label key={mode.value} className="sale-entry-checkbox"><input className="form-check-input" type="checkbox" disabled checked={(item.entryMode || "quantity") === mode.value} /><span>{mode.label}</span></label>)}</div></td><td><div className="input-group flex-nowrap" style={{ width: "max-content" }}><input className="form-control" style={{ width: "calc(5ch + 2.5rem)", flex: "0 0 auto" }} readOnly aria-label={`Valor vendido de ${item.name}`} value={item.entryMode === "amount" ? item.amount : item.quantity} /><span className="input-group-text">{item.entryMode === "amount" ? "MXN" : item.unit}</span></div>{item.entryMode === "amount" && <small className="d-block text-muted">≈ {Number(item.quantity.toFixed(3))} {item.unit}</small>}</td><td className="text-nowrap text-end">{money(item.amount)}{item.discountRate > 0 && <small className="sale-wholesale" title={`Descuento: ${money(item.discount)}`}>Mayoreo −15%</small>}</td></tr>)}</tbody>)}</table></div>
-                </section>{selected.origin==='MOVIL'&&persistence&&<MobileSaleCorrection sale={sales.find(s=>s.id===selected.id)||selected} persistence={persistence}/>} {selected.origin==='MOVIL'&&persistence&&!selected.voidedAt&&<MobileSaleBreakdown sale={sales.find(s=>s.id===selected.id)||selected} persistence={persistence} products={products}/>}<details className="sale-section"><summary>Historial de modificaciones</summary>{(sales.find(s=>s.id===selected.id)?.history||selected.history||[]).map((h,i)=><p key={i}>{h.at} · {h.channel} · {h.action}</p>)}</details>{selected.notes && <details className="sale-notes"><summary>Notas de la venta</summary><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{selected.notes}</p></details>}
+                    {group.items.map((item) => <tr key={item.id || item.productId}><td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small></td><td><div className="d-flex flex-nowrap align-items-center gap-3" role="group" aria-label={`Modo de venta de ${item.name}`}>{[{ value: "quantity", label: "Por cantidad" }, { value: "amount", label: "Por monto" }].map((mode) => <label key={mode.value} className="sale-entry-checkbox"><input className="form-check-input" type="checkbox" disabled checked={(item.entryMode || "quantity") === mode.value} /><span>{mode.label}</span></label>)}</div></td><td><div className="input-group flex-nowrap" style={{ width: "max-content" }}><input className="form-control" style={{ width: "calc(5ch + 2.5rem)", flex: "0 0 auto" }} readOnly aria-label={`Valor vendido de ${item.name}`} value={item.entryMode === "amount" ? item.amount : item.quantity} /><span className="input-group-text">{item.entryMode === "amount" ? "MXN" : item.unit}</span></div>{item.entryMode === "amount" && <small className="d-block text-muted">≈ {Number(item.quantity.toFixed(3))} {item.unit}</small>}</td><td className="text-nowrap text-end">{money(item.amount)}{item.priceTier === "wholesale" && <small className="sale-wholesale">Tarifa de mayoreo</small>}{item.discountRate > 0 && <small className="sale-wholesale" title={`Descuento: ${money(item.discount)}`}>Mayoreo −15%</small>}</td></tr>)}</tbody>)}</table></div>
+                </section>{selected.origin==='MOVIL'&&persistence&&<MobileSaleCorrection sale={sales.find(s=>s.id===selected.id)||selected} persistence={persistence}/>} {persistence&&!selected.voidedAt&&<MobileSaleBreakdown sale={sales.find(s=>s.id===selected.id)||selected} persistence={persistence} products={products}/>}<details className="sale-section"><summary>Historial de modificaciones</summary>{(sales.find(s=>s.id===selected.id)?.history||selected.history||[]).map((h,i)=><p key={i}>{h.at} · {h.channel} · {h.action}</p>)}</details>{selected.notes && <details className="sale-notes"><summary>Notas de la venta</summary><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{selected.notes}</p></details>}
             </>}</DialogContent>
             <DialogActions className="sale-modal-actions"><div className="sale-footer-total"><span>Total · MXN</span><strong>{money(selected?.total || 0)}</strong></div><Button color="inherit" onClick={() => setSelected(null)}>Cerrar detalle</Button></DialogActions>
         </Dialog>

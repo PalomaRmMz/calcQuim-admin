@@ -14,6 +14,7 @@ export function canonical(value) {
 export function createDatasetService(pool, schema='calcquim_sandbox',purpose='synthetic') {
   schema=schemaName(schema);
   if(!['synthetic','operational'].includes(purpose))throw new Error('Purpose no autorizado.');
+  const inventoryPending=async c=>await inventoryAvailable(c)?(await c.query("SELECT sale_id AS \"saleId\",ordinal,scope,reason FROM inventory_pending WHERE state='pending' ORDER BY sale_id,ordinal")).rows:[];
   const read=(c,lock=false)=>readDataset(c,lock,purpose==='operational'?'operational':false);
   async function transaction(callback, readOnly=false) {
     let c;
@@ -28,12 +29,12 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
     finally {c.release();}
   }
   return {
-    read:()=>transaction(async c=>({...await read(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false}),true),
+    read:()=>transaction(async c=>({...await read(c),inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false}),true),
     inventory:()=>transaction(async c=>readInventory(c,(await read(c)).data),true),
     mobileStatus:key=>transaction(async c=>{
       const row=(await c.query('SELECT response FROM idempotency_requests WHERE request_key=$1',['mobile:'+key])).rows[0];
       const snapshot=await read(c);
-      return row?.response?.receipt?{receipt:row.response.receipt,revision:snapshot.revision,generation:snapshot.generation}:{status:'not_found'};
+      return row?.response?.receipt?{receipt:row.response.receipt,revision:snapshot.revision,generation:snapshot.generation,inventoryPending:(await inventoryPending(c)).filter(p=>p.saleId===row.response.receipt.id)}:{status:'not_found'};
     },true),
     async command({name,args,revision,generation,requestKey,channel='WEB'}) {
       if(name==='createMobileSale'&&channel!=='MOVIL')throw new ApiError(403,'CHANNEL_FORBIDDEN','Canal no autorizado.');
@@ -46,7 +47,7 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
         if(previous) {
           if(previous.request_hash!==hash) throw new ApiError(409,'IDEMPOTENCY_CONFLICT','La clave ya corresponde a otra operación.');
           // Se devuelve resultado original y estado actual para no regresar la vista a una revisión antigua.
-          return {...current,result:previous.response,replayed:true,inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
+          return {...current,result:previous.response,replayed:true,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
         }
         if(current.generation!==generation||current.revision!==revision) throw new ApiError(412,'STALE_DATA','Los datos cambiaron. Recarga antes de guardar.');
         let result;
@@ -64,7 +65,7 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
             await c.query('UPDATE sales SET record=$2 WHERE id=$1',[String(sale.id),JSON.stringify({...sale,items:[]})]);
           }}
         await c.query('INSERT INTO idempotency_requests(request_key,request_hash,response) VALUES($1,$2,$3)',[requestKey,hash,JSON.stringify(result)]);
-        return {...current,revision:current.revision+1,result,replayed:false,inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
+        return {...current,revision:current.revision+1,result,replayed:false,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
       });
     },
   };

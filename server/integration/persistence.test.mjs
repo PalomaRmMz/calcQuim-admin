@@ -89,7 +89,7 @@ test('persistencia integral en PostgreSQL real, solo sintéticos',async t=>{
       const input={date:'2026-01-03',payment:'Efectivo',items:[{productId:1,unit:'litro',price:20,quantity:10}]};
       const request={name:'createSale',args:[input],revision:state.revision,generation:state.generation,requestKey:randomUUID()};
       const [a,b]=await Promise.all([service.command(request),service.command(request)]);assert.equal(a.data.sales[0].id,b.data.sales[0].id);
-      state=await service.read();assert.equal(state.data.sales.length,1);assert.equal(state.data.sales[0].total,170);assert.equal(state.data.sales[0].folio,'V-00001');
+      state=await service.read();assert.equal(state.data.sales.length,1);assert.equal(state.data.sales[0].total,200);assert.equal(state.data.sales[0].folio,'V-00001');
       await assert.rejects(service.command({...request,args:[{...input,payment:'Tarjeta'}]}),{code:'IDEMPOTENCY_CONFLICT'});
       await command('createSale',{...input,items:[{productId:2,unit:'litro',price:20,entryMode:'amount',requestedAmount:170,quantity:10}]});
       assert.equal(state.data.sales[0].folio,'V-00002');assert.equal(state.data.sales[0].total,170);
@@ -176,3 +176,4 @@ test('persistencia integral en PostgreSQL real, solo sintéticos',async t=>{
     await pool.end();
   }
 });
+

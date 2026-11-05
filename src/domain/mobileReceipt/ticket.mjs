@@ -42,7 +42,7 @@ export function ticketModel(receipt) {
           ? `Por importe · ${money(item.amount)}`
           : null,
       discount:
-        item.discountRate > 0
+        item.priceTier === 'wholesale' ? 'Tarifa de mayoreo' : item.discountRate > 0
           ? `Mayoreo ${Number((item.discountRate * 100).toFixed(2))} %`
           : null,
     };

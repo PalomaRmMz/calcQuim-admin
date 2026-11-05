@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "node scripts/local-system.mjs start",
+    "stop": "node scripts/local-system.mjs stop",
+    "status": "node scripts/local-system.mjs status",
     "test": "node --test tests/*.test.js",
     "dev": "vite",
     "dev:postgres": "vite --config vite.postgres.config.js --mode postgres-sandbox",

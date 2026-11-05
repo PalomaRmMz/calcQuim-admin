@@ -21,21 +21,34 @@ export async function readDataset(c, lock = false, allowRehearsal = false) {
     if (Object.hasOwn(data, name)) data[name] = rows;
     else data.procurement[name] = rows;
   }
-  for (const p of data.purchases ?? data.procurement.purchases) {
-    p.items = (await c.query('SELECT record FROM purchase_items WHERE purchase_id=$1 ORDER BY ordinal',[key(p.id)])).rows.map(r=>r.record);
-    if (Object.hasOwn(p,'revisions')) p.revisions = (await c.query('SELECT record FROM purchase_revisions WHERE purchase_id=$1 ORDER BY ordinal',[key(p.id)])).rows.map(r=>r.record);
-    if (p.receipt === true) p.receipt = (await c.query('SELECT record FROM purchase_receipts WHERE purchase_id=$1',[key(p.id)])).rows[0]?.record;
+  // Leer los detalles por lote: el número de consultas no crece por cada folio.
+  async function grouped(table,parent,ordered=true){
+    const groups=new Map();
+    for(const row of (await c.query(`SELECT ${parent},record FROM ${table}${ordered?` ORDER BY ${parent},ordinal`:''}`)).rows){
+      const id=key(row[parent]);if(!groups.has(id))groups.set(id,[]);
+      groups.get(id).push(row.record);
+    }
+    return groups;
   }
-  for (const sale of data.sales) sale.items = (await c.query('SELECT record FROM sale_items WHERE sale_id=$1 ORDER BY ordinal',[key(sale.id)])).rows.map(r=>r.record);
+  const purchaseItems=await grouped('purchase_items','purchase_id');
+  const revisions=await grouped('purchase_revisions','purchase_id');
+  const receipts=await grouped('purchase_receipts','purchase_id',false);
+  const saleItems=await grouped('sale_items','sale_id');
+  for (const p of data.purchases ?? data.procurement.purchases) {
+    p.items=purchaseItems.get(key(p.id))??[];
+    if(Object.hasOwn(p,'revisions'))p.revisions=revisions.get(key(p.id))??[];
+    if(p.receipt===true)p.receipt=receipts.get(key(p.id))?.[0];
+  }
+  for(const sale of data.sales)sale.items=saleItems.get(key(sale.id))??[];
   return { data, revision:Number(state.revision), generation:state.generation, counters:state.counters };
 }
 
-function columns(name, r) {
+function columns(name, r, wholesale = false) {
   switch (name) {
     case 'categories': case 'suppliers': return { name_key:normalizeText(r.name) };
     case 'productLines': return { category_id:key(r.categoryId), name_key:normalizeText(r.name) };
-    case 'priceGroups': return { name_key:normalizeText(r.name), price:r.price };
-    case 'products': return { category_id:key(r.categoryId),line_id:key(r.lineId),price_group_id:key(r.priceGroupId),name_key:normalizeText(r.name),unit:r.unit,price:r.price ?? null };
+    case 'priceGroups': return { name_key:normalizeText(r.name), price:r.price, ...(wholesale ? {wholesale_price:r.wholesalePrice ?? null} : {}) };
+    case 'products': return { category_id:key(r.categoryId),line_id:key(r.lineId),price_group_id:key(r.priceGroupId),name_key:normalizeText(r.name),unit:r.unit,price:r.price ?? null, ...(wholesale ? {wholesale_price:r.wholesalePrice ?? null} : {}) };
     case 'purchasedItems': return { sourcing_type:r.sourcingType,unit:r.unit };
     case 'supplyItems': return { purchased_item_id:key(r.purchasedItemId),supplier_id:key(r.supplierId),purchase_unit:r.purchaseUnit,purchase_quantity:r.purchaseQuantity ?? null,identity_key:sourceIdentity(r) };
     case 'supplyConversions': return { purchased_item_id:key(r.purchasedItemId),output_product_id:key(r.outputProductId),input_quantity:r.yield?.inputQuantity ?? null,input_unit:r.yield?.inputUnit ?? null,output_quantity:r.yield?.outputQuantity ?? null,output_unit:r.yield?.outputUnit ?? null };
@@ -58,7 +71,7 @@ export async function writeDataset(c, data, counters) {
       let record = row;
       if (name === 'purchases') record = { ...omit(row,['items','revisions','receipt']), items:[], ...(Object.hasOwn(row,'revisions') ? {revisions:[]} : {}), ...(row.receipt ? {receipt:true} : Object.hasOwn(row,'receipt') ? {receipt:row.receipt} : {}) };
       if (name === 'sales') record = {...row,items:[]};
-      await insert(c, table, {id:key(row.id),position,record:JSON.stringify(record),...columns(name,row)}, ['id']);
+      await insert(c, table, {id:key(row.id),position,record:JSON.stringify(record),...columns(name,row,data.procurement.wholesalePricingSchema===2)}, ['id']);
     }
     await c.query(`DELETE FROM ${table} WHERE NOT(id=ANY($1::text[]))`,[rows.map(r=>key(r.id))]);
   }

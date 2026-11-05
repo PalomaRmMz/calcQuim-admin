@@ -12,13 +12,14 @@ import { prepareSupplyYieldBatch } from '../../../src/services/supplyYieldBatch.
 import { configureProductBatch } from '../../../src/services/supplyModelBatch.js';
 import { createSale, voidSale, validateSales } from '../../../src/services/salesStorage.js';
 import { getProductDisplayName } from '../../../src/utils/catalogUtils.js';
+import { wholesaleEnabled, WHOLESALE_VERSION, AMOUNT_POLICIES } from '../../../src/domain/wholesalePricing.mjs';
 
 export class ApiError extends Error {
   constructor(status, code, message) { super(message); this.status=status; this.code=code; }
 }
 export const catalogCommands = ['addCategory','updateCategory','deleteCategory','addProductLine','updateProductLine','deleteProductLine','addPriceGroup','updatePriceGroup','deletePriceGroup','addProduct','updateProduct','deleteProduct','addProductsBatch','updateProductsBatch'];
 export const procurementCommands = ['savePurchasedItem','savePurchasedItemsBatch','saveSupplyYieldBatch','savePurchasedItemSetup','saveSupplySource','saveSupplyConversion','configureSupplyBatch','configureProductBatch','saveSources','saveSupplier','setSupplyActive','addSupplierPrice','deleteEntity','savePurchase','voidPurchase'];
-export const commandNames = [...catalogCommands,...procurementCommands,'createSale','createMobileSale','correctMobileSale','voidSale'];
+export const commandNames = [...catalogCommands,...procurementCommands,'createSale','createMobileSale','correctMobileSale','voidSale','configureWholesalePricing'];
 export function memoryStorage(data) {
   const values = {
     [STORAGE_KEYS.products]: data.products,[STORAGE_KEYS.categories]:data.categories,
@@ -54,6 +55,15 @@ export function validateDataset(data) {
 }
 export function executeCommand(data, counters, name, args) {
   if (!commandNames.includes(name) || !Array.isArray(args) || args.length>3) throw new ApiError(400,'INVALID_COMMAND','Operación no válida.');
+  if (name==='configureWholesalePricing') {
+    if (data.procurement.wholesalePricingSchema!==2) throw new ApiError(409,'WHOLESALE_SCHEMA_NOT_READY','Migración de mayoreo pendiente de autorización.');
+    if (!AMOUNT_POLICIES.includes(args[0]?.amountPolicy)) throw new ApiError(422,'AMOUNT_POLICY_REQUIRED','Selecciona la política comercial de captura por importe.');
+    data.procurement.wholesalePricing={version:WHOLESALE_VERSION,amountPolicy:args[0].amountPolicy};
+    return {ok:true};
+  }
+  if (!wholesaleEnabled(data) && ['addProduct','updateProduct','addPriceGroup','updatePriceGroup','addProductsBatch','updateProductsBatch'].includes(name) && JSON.stringify(args).includes('"wholesalePrice"')) {
+    throw new ApiError(409,'WHOLESALE_NOT_ACTIVATED','Mayoreo pendiente de migración y activación autorizada.');
+  }
   const catalog = {categories:data.categories,productLines:data.productLines,priceGroups:data.priceGroups,products:data.products};
   const named = data.products.map(p=>({...p,displayName:getProductDisplayName(p,data.categories,data.productLines)}));
   let result={ok:true};
@@ -96,8 +106,8 @@ export function executeCommand(data, counters, name, args) {
         if (!p.purchases.some(x=>x.id===args[0]&&!x.voidedAt)) throw new ApiError(404,'NOT_FOUND','Compra no encontrada o anulada.');
         p=procurement.voidPurchase(p,args[0]); break;
       case 'correctMobileSale': data.sales=correctMobileSale(data.sales,args[0],args[1]); break;
-      case 'createMobileSale': data.sales=createMobileSale(data.sales,args[0],catalog,counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
-      case 'createSale': data.sales=createSale(data.sales,args[0],catalog,counters.sales??0); break;
+      case 'createMobileSale': data.sales=createMobileSale(data.sales,args[0],{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
+      case 'createSale': data.sales=createSale(data.sales,args[0],{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); break;
       case 'voidSale': data.sales=voidSale(data.sales,args[0]); break;
       default: throw new ApiError(400,'INVALID_COMMAND','Operación no disponible.');
     }

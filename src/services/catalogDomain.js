@@ -2,6 +2,7 @@ import { normalizeText } from "../utils/catalogUtils.js";
 import { normalizeUnit } from "../utils/units.js";
 import { catalogProductPrice } from "./catalogValidation.js";
 import { categoryColor, assignCategoryColor } from "../utils/categoryColors.js";
+import { validWholesalePrice } from '../domain/wholesalePricing.mjs';
 
 function hasProperty(object, property) {
     return Object.prototype.hasOwnProperty.call(object, property);
@@ -256,7 +257,8 @@ export function createCatalogActions({ categories, productLines, products, price
 
     /* GRUPOS DE PRECIO */
 
-    function addPriceGroup({ name, price, active = true }) {
+    function addPriceGroup({ name, price, active = true, wholesalePrice }) {
+        try { validWholesalePrice(wholesalePrice, price); } catch (error) { return {ok:false,message:error.message}; }
         if (!name?.trim()) {
             return { ok: false, message: "Escribe el nombre del grupo." };
         }
@@ -279,6 +281,7 @@ export function createCatalogActions({ categories, productLines, products, price
             id: getNextId(priceGroups),
             name: name.trim(),
             price: numericPrice,
+            ...(wholesalePrice !== undefined ? { wholesalePrice: validWholesalePrice(wholesalePrice, price) } : {}),
             active,
         };
 
@@ -287,12 +290,14 @@ export function createCatalogActions({ categories, productLines, products, price
         return { ok: true };
     }
 
-    function updatePriceGroup(groupId, { name, price, active }) {
+    function updatePriceGroup(groupId, { name, price, active, wholesalePrice }) {
         if (!name?.trim()) {
             return { ok: false, message: "Escribe el nombre del grupo." };
         }
 
         const currentGroup = priceGroups.find((group) => group.id === groupId);
+        const nextWholesale = wholesalePrice === undefined ? currentGroup?.wholesalePrice : wholesalePrice;
+        try { validWholesalePrice(nextWholesale, price); } catch (error) { return {ok:false,message:error.message}; }
 
         if (!currentGroup) {
             return { ok: false, message: "El grupo de precio no existe." };
@@ -316,7 +321,7 @@ export function createCatalogActions({ categories, productLines, products, price
         setPriceGroups((currentGroups) =>
             currentGroups.map((group) =>
                 group.id === groupId
-                    ? { ...group, name: name.trim(), price: numericPrice, active }
+                    ? { ...group, name: name.trim(), price: numericPrice, active, ...(nextWholesale !== undefined ? {wholesalePrice:validWholesalePrice(nextWholesale, price)} : {}) }
                     : group
             )
         );
@@ -462,6 +467,8 @@ export function createCatalogActions({ categories, productLines, products, price
                 if (resolvedBatchPrice === null) {
                     return { ok: false, message: "El precio no es válido." };
                 }
+                try { for (const product of products.filter(p=>productIds.includes(p.id))) validWholesalePrice(product.wholesalePrice,resolvedBatchPrice); }
+                catch (error) { return {ok:false,message:error.message}; }
             }
         }
 
@@ -537,6 +544,7 @@ export function createCatalogActions({ categories, productLines, products, price
                 }
 
                 if (hasPrice) {
+                    if (changes.priceType !== 'individual' && Object.hasOwn(updatedProduct,'wholesalePrice')) updatedProduct.wholesalePrice = null;
                     if (changes.priceType === "group") {
                         updatedProduct.priceGroupId = changes.priceGroupId;
                         updatedProduct.price = null;
@@ -654,6 +662,7 @@ export function createCatalogActions({ categories, productLines, products, price
             .map((item) => ({
                 name: item?.name?.trim() || "",
                 price: item?.price,
+                ...(item?.wholesalePrice !== undefined ? {wholesalePrice:item.wholesalePrice} : {}),
             }))
             .filter((item) => item.name);
 
@@ -688,6 +697,10 @@ export function createCatalogActions({ categories, productLines, products, price
                 }
             }
 
+            try {
+                if (item.wholesalePrice != null && (priceMode !== 'individual-row' || resolvedUnit !== 'litro')) return {ok:false,message:'El mayoreo individual requiere precio individual por litro.'};
+                validWholesalePrice(item.wholesalePrice,resolvedItemPrice);
+            } catch (error) { return {ok:false,message:error.message}; }
             seenKeys.add(key);
             validItems.push({ ...item, resolvedItemPrice });
         }
@@ -716,6 +729,7 @@ export function createCatalogActions({ categories, productLines, products, price
                         ? item.resolvedItemPrice
                         : null,
             unit: resolvedUnit,
+            ...(item.wholesalePrice !== undefined ? {wholesalePrice:validWholesalePrice(item.wholesalePrice,item.resolvedItemPrice)} : {}),
             active: Boolean(active),
             available: Boolean(available),
         }));
@@ -733,8 +747,10 @@ export function createCatalogActions({ categories, productLines, products, price
 
     /* PRODUCTOS */
 
-    function addProduct({ name, unit, active = true, available = true, categoryId = null, lineId = null, priceGroupId = null, price = null }) {
-        if (categoryId != null) return addProductsBatch({ items: [{ name, price }], categoryId, lineId, unit, active, available, priceMode: priceGroupId != null ? "group" : price != null ? "individual-row" : "none", priceGroupId });
+    function addProduct({ name, unit, active = true, available = true, categoryId = null, lineId = null, priceGroupId = null, price = null, wholesalePrice }) {
+        try { validWholesalePrice(wholesalePrice, price); } catch (error) { return {ok:false,message:error.message}; }
+        if (wholesalePrice != null && (priceGroupId != null || normalizeUnit(unit) !== 'litro')) return {ok:false,message:'El mayoreo individual requiere precio individual por litro.'};
+        if (categoryId != null) return addProductsBatch({ items: [{ name, price, ...(wholesalePrice !== undefined ? {wholesalePrice} : {}) }], categoryId, lineId, unit, active, available, priceMode: priceGroupId != null ? "group" : price != null ? "individual-row" : "none", priceGroupId });
         if (!normalizeUnit(unit)) return { ok: false, message: "Selecciona una unidad válida." };
         if (lineId != null) return { ok: false, message: "Selecciona la categoría de la línea." };
         if (priceGroupId != null && !priceGroups.some(g => g.id === priceGroupId && g.active)) return { ok: false, message: "Selecciona un grupo activo." };
@@ -763,6 +779,7 @@ export function createCatalogActions({ categories, productLines, products, price
             lineId: null,
             priceGroupId,
             price: priceGroupId != null ? null : parsePrice(price),
+            ...(wholesalePrice !== undefined ? {wholesalePrice:validWholesalePrice(wholesalePrice,price)} : {}),
             unit: normalizeUnit(unit),
             active,
             available,
@@ -775,13 +792,15 @@ export function createCatalogActions({ categories, productLines, products, price
 
     function updateProduct(
         productId,
-        { name, categoryId, lineId, priceGroupId, price, unit, active, available }
+        { name, categoryId, lineId, priceGroupId, price, unit, active, available, wholesalePrice }
     ) {
         if (!name?.trim()) {
             return { ok: false, message: "Escribe el nombre del producto." };
         }
 
         const currentProduct = products.find((product) => product.id === productId);
+        const nextWholesale = wholesalePrice === undefined && currentProduct?.wholesalePrice === undefined ? undefined : priceGroupId != null || normalizeUnit(unit) !== 'litro' ? null : wholesalePrice === undefined ? currentProduct?.wholesalePrice : wholesalePrice;
+        try { validWholesalePrice(nextWholesale, price); } catch (error) { return {ok:false,message:error.message}; }
 
         if (!currentProduct) {
             return { ok: false, message: "El producto no existe." };
@@ -909,6 +928,7 @@ export function createCatalogActions({ categories, productLines, products, price
                         lineId: categoryId === null ? null : lineId,
                         priceGroupId,
                         price: priceGroupId !== null ? null : resolvedPrice,
+                        ...(nextWholesale !== undefined ? {wholesalePrice:validWholesalePrice(nextWholesale,price)} : {}),
                         unit: normalizeUnit(unit),
                         active,
                         available: available ?? currentProduct.available ?? true,

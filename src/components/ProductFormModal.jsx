@@ -3,12 +3,16 @@ import FormLabel from "./FormLabel";
 import ValidatedForm from "./ValidatedForm";
 import ModalHeader from "./ModalHeader";
 import { Dialog } from "@mui/material";
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { UNITS, normalizeUnit } from "../utils/units.js";
+import { CatalogContext } from '../context/CatalogHooks.js';
+import { validWholesalePrice } from '../domain/wholesalePricing.mjs';
 
 function ProductFormModal({
     show, product, categories, productLines, priceGroups, onClose, onSave,
 }) {
+    const {wholesalePricing} = useContext(CatalogContext) || {};
+    const [wholesalePrice,setWholesalePrice] = useState(product?.wholesalePrice ?? '');
     const [active, setActive] = useState(product?.active ?? true);
     const [available, setAvailable] = useState(product?.available ?? true);
     const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
@@ -59,6 +63,9 @@ function ProductFormModal({
     async function handleSubmit(event) {
         event.preventDefault();
         setError("");
+        if (priceType === 'individual' && unit === 'litro') {
+            try { validWholesalePrice(wholesalePrice,price); } catch (error) { setError(error.message); return; }
+        }
 
         if (!name.trim()) {
             setError("Escribe el nombre del producto.");
@@ -83,6 +90,7 @@ function ProductFormModal({
             available,
             name: name.trim(),
             unit,
+            ...(wholesalePricing ? {wholesalePrice:priceType === 'individual' && unit === 'litro' ? validWholesalePrice(wholesalePrice,price) : null} : {}),
         };
 
         {
@@ -283,7 +291,7 @@ function ProductFormModal({
                                         {priceType === "individual" && (
                                             <div className="mb-3">
                                                 <FormLabel required className="form-label" htmlFor="productPrice">
-                                                    Precio individual
+                                                    Precio normal individual
                                                 </FormLabel>
 
                                                 <div className="input-group">
@@ -302,6 +310,7 @@ function ProductFormModal({
                                             </div>
                                         )}
 
+                                        {priceType === 'individual' && unit === 'litro' && (wholesalePricing ? <div className="mb-3"><label className="form-label" htmlFor="productWholesale">Precio de mayoreo individual por litro</label><input id="productWholesale" type="number" min="0.01" step="0.01" max={price || undefined} className="form-control" value={wholesalePrice} onChange={e=>setWholesalePrice(e.target.value)}/><small className="text-muted">Opcional. Se aplica automáticamente desde 10 L.</small></div> : <p className="text-muted small">Mayoreo pendiente de activación autorizada.</p>)}
                                         {priceType === "none" && (
                                             <div className="alert alert-warning mb-0">
                                                 Este producto quedará sin precio asignado.

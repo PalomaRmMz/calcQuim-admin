@@ -24,7 +24,7 @@ test('inventario íntegro en esquema nuevo y datos exclusivamente sintéticos',a
   try{
     const isolated=await pool.connect();try{await isolated.query('BEGIN');await migrate(pool,schema,'up',{client:isolated});await isolated.query('ROLLBACK');}finally{isolated.release();}
     assert.equal((await pool.query('SELECT to_regnamespace($1) AS schema',[schema])).rows[0].schema,null);
-    await migrate(pool,schema);await migrate(pool,schema);await migrate(pool,schema,'down');assert.equal((await createDatasetService(pool,schema).inventory()).enabled,true);await migrate(pool,schema,'down');assert.equal((await createDatasetService(pool,schema).inventory()).enabled,false);await migrate(pool,schema);
+    await migrate(pool,schema);await migrate(pool,schema);await migrate(pool,schema,'down');assert.equal((await createDatasetService(pool,schema).inventory()).enabled,true);await migrate(pool,schema,'down');await migrate(pool,schema,'down');assert.equal((await createDatasetService(pool,schema).inventory()).enabled,false);await migrate(pool,schema);
     service=createDatasetService(pool,schema);state=await service.read();
     await command('addCategory',{name:'Grupo sintético',active:true});await command('addProductLine',{name:'Línea sintética',categoryId:1,active:true});
     for(const name of ['Producto físico A sintético','Producto físico B sintético'])await command('addProduct',{name,unit:'litro',price:10,categoryId:1,lineId:1,active:true,available:true});
@@ -53,11 +53,11 @@ test('inventario íntegro en esquema nuevo y datos exclusivamente sintéticos',a
       assert.equal((await stock(1)).quantity,'12');assert.equal((await stock(2)).quantity,'-1.5');assert.deepEqual(state.data.sales.find(s=>s.id===sale.id),sale);
       await assert.rejects(command('inventoryAllocate',args[0]));
     });
-    await t.test('importe monetario conserva pendiente hasta confirmar cantidad física',async()=>{
+    await t.test('importe monetario exacto descuenta automáticamente sin un segundo desglose',async()=>{
       await command('createSale',{...saleInput(2),items:[{productId:1,price:10,unit:'litro',entryMode:'amount',requestedAmount:20,quantity:2}]});const sale=state.data.sales[0];
-      const pending=(await service.inventory()).pending.find(p=>p.sale_id===sale.id);assert.equal(pending.quantity,null);assert.equal((await stock(1)).quantity,'12');
-      await assert.rejects(command('inventoryAllocate',{pendingId:pending.id,reason:'Sin cantidad sintética',allocations:[{productId:1,quantity:'2',unit:'litro'}]}));
-      await command('inventoryAllocate',{pendingId:pending.id,confirmedQuantity:'2',confirmedUnit:'litro',reason:'Cantidad física sintética',allocations:[{productId:1,quantity:'2',unit:'litro'}]});assert.equal((await stock(1)).quantity,'10');
+      const pending=(await service.inventory()).pending.find(p=>p.sale_id===sale.id);assert.equal(pending,undefined);assert.equal((await stock(1)).quantity,'10');
+      await assert.rejects(command('inventoryAllocate',{pendingId:randomUUID(),reason:'Segundo descuento sintético',allocations:[{productId:1,quantity:'2',unit:'litro'}]}));
+      assert.equal((await stock(1)).quantity,'10');
     });
     await t.test('mermas y correcciones inmutables; anulación con confirmación física',async()=>{
       await command('inventoryMovement',input(1,'-0.5',{kind:'waste'}));const id=state.result.movementId;assert.equal((await stock(1)).quantity,'9.5');
@@ -163,6 +163,18 @@ test('inventario íntegro en esquema nuevo y datos exclusivamente sintéticos',a
       await command('inventoryEstimate',input(5,'12'));const legacy=(await stock(5));
       await command('inventoryCorrectInitial',{productId:5,quantity:'8',unit:'litro',initialMovementId:legacy.initialMovementId,previousQuantity:'12',reasonCode:'capture_error'});
       assert.equal((await stock(5)).quantity,'8');assert.equal((await service.inventory()).movements.find(m=>m.id===legacy.initialMovementId).quantity,'12');
+    });
+    await t.test('web por monto descuenta a un decimal de forma at?mica e idempotente',async()=>{
+      const before=await stock(1);
+      const request={name:'createSale',args:[{date:localDate(),payment:'Efectivo',items:[{productId:1,price:10,unit:'litro',entryMode:'amount',requestedAmount:12.50,quantity:1.25}]}],revision:state.revision,generation:state.generation,requestKey:randomUUID()};
+      const result=await service.command(request);await service.command(request);state=await service.read();
+      const sale=result.data.sales[0],view=await service.inventory();
+      assert.equal(sale.total,12.5);assert.equal(sale.items[0].quantity,1.25);
+      assert.equal(view.pending.some(p=>p.sale_id===sale.id),false);
+      const movements=view.movements.filter(m=>m.sale_id===sale.id&&m.kind==='sale');
+      assert.equal(movements.length,1);assert.equal(movements[0].quantity,'-1.3');
+      assert.equal(movements[0].reference.quantityEvidence,'web_amount_rounded_1_decimal');
+      assert.ok(Math.abs(Number((await stock(1)).quantity)-(Number(before.quantity)-1.3))<1e-8);
     });
     await t.test('dump y restauración incluyen historial, pendientes, reversas y configuración íntegros',async()=>{
       await runtime.close();runtime=null;

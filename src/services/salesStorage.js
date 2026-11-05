@@ -4,6 +4,7 @@ import { validDate } from "../utils/procurementUtils.js";
 import { normalizeUnit } from "../utils/units.js";
 import { getProductDisplayName } from "../utils/catalogUtils.js";
 import { catalogProductPrice } from "./catalogValidation.js";
+import { wholesaleEnabled, wholesaleSettings, productRates, WHOLESALE_VERSION } from '../domain/wholesalePricing.mjs';
 
 const amount = value => typeof value === "number" && Number.isFinite(value) && value >= 0;
 export function validateSales(sales) {
@@ -48,20 +49,29 @@ export function createSale(sales, input, catalog, legacySequence = 0) {
     const seen = new Set();
     const entries = input.items.map(item => {
         const product = products.find(p => String(p.id) === String(item.productId));
-        const price = catalogProductPrice(product, priceGroups);
+        const price = catalogProductPrice(product, priceGroups, wholesaleEnabled(catalog));
         if (!product?.active || product.available === false || price === null) throw new Error("Un producto ya no está disponible o no tiene precio vigente.");
         if (seen.has(String(product.id))) throw new Error("Un producto está repetido en la venta.");
         seen.add(String(product.id));
-        if (price !== item.price || normalizeUnit(product.unit) !== normalizeUnit(item.unit)) throw new Error("El precio o unidad cambió. Revisa el producto antes de guardar la venta.");
+        if ((!wholesaleEnabled(catalog) && price !== item.price) || normalizeUnit(product.unit) !== normalizeUnit(item.unit)) throw new Error("El precio o unidad cambió. Revisa el producto antes de guardar la venta.");
         if (!["quantity", "amount", undefined].includes(item.entryMode)) throw new Error("El modo de venta no es válido.");
         const value = item.entryMode === "amount" ? item.requestedAmount : item.quantity;
         if (!["number", "string"].includes(typeof value) || String(value).trim() === "" || !Number.isFinite(Number(value)) || Number(value) <= 0) throw new Error("Indica una cantidad o importe positivo.");
+        const rates = wholesaleEnabled(catalog) ? { ...productRates(product,priceGroups),pricingVersion:WHOLESALE_VERSION,amountPolicy:wholesaleSettings(catalog).amountPolicy } : {};
+        const intent=input.inventory?.[String(product.id)];
+        const eligibleProductIds=intent?.pendingGroup?products.filter(p=>{
+            const sameScope=intent.scope==='line'?p.lineId===product.lineId:intent.scope==='category'?p.categoryId===product.categoryId:false;
+            if(!sameScope||normalizeUnit(p.unit)!==normalizeUnit(product.unit))return false;
+            if(!wholesaleEnabled(catalog))return catalogProductPrice(p,priceGroups)===price;
+            const peer=productRates(p,priceGroups);return peer.priceSource===rates.priceSource&&String(peer.priceSourceId)===String(rates.priceSourceId);
+        }).map(p=>p.id):null;
         const line = productLines.find(l => l.id === product.lineId);
         const category = categories.find(c => c.id === product.categoryId);
-        return { productId: product.id, name: getProductDisplayName(product, categories, productLines), productNameSnapshot: product.name, priceGroupIdSnapshot: product.priceGroupId ?? null, unit: normalizeUnit(product.unit), price, quantity: item.quantity, entryMode: item.entryMode || "quantity", requestedAmount: item.entryMode === "amount" ? Number(item.requestedAmount) : null,
+        return { productId: product.id, name: getProductDisplayName(product, categories, productLines), productNameSnapshot: product.name, priceGroupIdSnapshot: product.priceGroupId ?? null, unit: normalizeUnit(product.unit), price, ...rates, ...(eligibleProductIds?{eligibleProductIds}:{}), quantity: item.quantity, confirmedQuantity:item.confirmedQuantity??null, entryMode: item.entryMode || "quantity", requestedAmount: item.entryMode === "amount" ? Number(item.requestedAmount) : null,
             group: line ? { id: `line-${line.id}`, name: line.name, colorId: line.id } : category ? { id: `category-${category.id}`, name: category.name, colorId: category.id } : { id: "unclassified", name: "Sin categoría" } };
     });
     const items = calculateItems(entries);
+    if(wholesaleEnabled(catalog)) items.forEach((applied,n)=>{const item=input.items[n];if(item.pricingVersion!==WHOLESALE_VERSION||item.price!==applied.price||item.priceTier!==applied.priceTier||(item.amount!=null&&item.amount!==applied.amount))throw new Error('La tarifa automática del grupo cambió. Revisa la venta completa.');});
     const highest = sales.reduce((max, sale) => Math.max(max, Number(String(sale.folio || "").replace(/^V-/, "")) || 0), 0);
     const sequence = Math.max(highest, Number.isSafeInteger(Number(legacySequence)) && Number(legacySequence) >= 0 ? Number(legacySequence) : 0) + 1;
     if (!Number.isSafeInteger(sequence)) throw new Error("La secuencia de folios está fuera de rango.");

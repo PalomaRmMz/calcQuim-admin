@@ -27,6 +27,17 @@ feat: activar PostgreSQL local con persistencia segura, inicio y respaldos
 
 ## Abrir y cerrar CalcQuim
 
+Después de apagar o reiniciar Windows, abrir `Iniciar-CalcQuim.cmd` de nuevo.
+El inicio espera hasta un minuto si PostgreSQL aún está recuperándose y comprueba
+que el gestor esté listo antes de abrir el navegador. No hace falta abrir terminales
+para iniciar React o Express por separado.
+
+El escritorio puede iniciar aunque el enlace móvil no esté disponible (por ejemplo,
+sin Wi-Fi o si cambió la IP autorizada). En ese caso se muestra un aviso; para
+reconectar el móvil, revisar el Wi-Fi y cerrar y abrir CalcQuim con sus archivos CMD.
+No se amplía automáticamente el acceso de red. Los errores de inicio conservan
+etapa y código, sin credenciales, en `server/artifacts/launcher/last-error.private.json`.
+
 Hacer doble clic en `Iniciar-CalcQuim.cmd`. Requiere Node en PATH y las dependencias existentes. Abre `http://127.0.0.1:5173`. El gestor usa el puerto local 3099 y conserva únicamente su estado técnico privado en `server/artifacts/launcher/`.
 
 Detecta Express y Vite existentes, verifica el dataset operativo y el modo servido por React y los reutiliza. Si un puerto corresponde a un servicio incompatible, se detiene. No mata procesos para liberar puertos. El inicio se mantiene oculto; PostgreSQL continúa como servicio Windows, sin modificarlo.

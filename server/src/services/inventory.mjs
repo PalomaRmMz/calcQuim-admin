@@ -5,13 +5,33 @@ import { inventoryConvert,inventoryDecimal,inventoryText } from '../../../src/se
 import { inventoryAvailable,inventoryPolicy,inventoryChange,inventoryAccount,appendInventoryMovement,readInventory } from '../repositories/inventory.mjs';
 import { resolveInventoryReason,movementReasonContext } from '../../../src/services/inventoryReasons.js';
 import { validDate } from '../../../src/utils/procurementUtils.js';
+// An exact monetary conversion can establish a six-decimal physical quantity.
+// Repeating fractions require explicit confirmation; no inventory rounding.
+export function exactSaleQuantity(item, product, origin) {
+  try {
+    if(item.entryMode!=='amount')return inventoryConvert(item.quantity,item.unit,product.unit);
+    let n,d;
+    if(item.quantityNumerator&&item.quantityDenominator){n=BigInt(item.quantityNumerator);d=BigInt(item.quantityDenominator);}
+    else {const cents=BigInt(Math.round(Number(item.requestedAmount??item.amount)*100)),price=BigInt(Math.round(item.price*100)),percent=BigInt(Math.round((1-(item.discountRate||0))*100));n=cents*100n;d=price*percent;}
+    if(d<=0n||n<=0n)return null;
+    // Regla autorizada para ventas web por monto: redondeo decimal half-up.
+    // Se conserva el importe comercial y se redondea en la unidad vendida.
+    if(origin==='WEB'){
+      const tenths=(n*20n+d)/(d*2n);
+      return tenths>0n?inventoryConvert(inventoryText(tenths*100000n),item.unit,product.unit):null;
+    }
+    if((n*1000000n)%d!==0n)return null;
+    return inventoryConvert(inventoryText(n*1000000n/d),item.unit,product.unit);
+  }catch{return null;}
+}
+
 export const inventoryCommands=['inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase'];
 const fail=(message,code='INVENTORY_VALIDATION')=>{throw new ApiError(422,code,message);};
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const findProduct=(data,id)=>{const p=data.products.find(p=>String(p.id)===String(id));if(!p)fail('Selecciona un producto existente.');return p;};
 function reason(input,context){try{return resolveInventoryReason(input,context);}catch(error){fail(error.message,'INVENTORY_REASON_INVALID');}}
 function uuid(value){if(typeof value!=='string'||!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).test(value))fail('Identificador de inventario no válido.');return value;}
-async function checkBaseline(c,product,event,treatment){
+export async function checkBaseline(c,product,event,treatment){
   const anchor=(await c.query('SELECT m.* FROM inventory_accounts a JOIN inventory_movements m ON m.id=a.anchor_id WHERE a.product_id=$1',[String(product.id)])).rows[0];
   if(!anchor){if(treatment==='already_included')fail('No existe una estimación en la que incluir este movimiento.');return {};}
   const day=anchor.recorded_at.toLocaleDateString('en-CA',{timeZone:'America/Mexico_City'});
@@ -106,7 +126,7 @@ export async function executeInventoryCommand(c,data,name,args){
   }
   fail('Acción de inventario desconocida.');
 }
-async function allocate(c,data,input){
+export async function allocate(c,data,input){
   const pending=(await c.query('SELECT * FROM inventory_pending WHERE id=$1 FOR UPDATE',[uuid(input.pendingId)])).rows[0];
   const sale=data.sales.find(s=>String(s.id)===pending?.sale_id);
   if(!pending||pending.state!=='pending'||!sale||sale.voidedAt)fail('La asignación no está pendiente.');
@@ -122,7 +142,7 @@ async function allocate(c,data,input){
     const captured=sale.items[pending.ordinal];
     if(captured.eligibleProductIds&&!captured.eligibleProductIds.some(id=>String(id)===String(product.id)))fail('Producto incompatible con la tarifa histórica aplicada.');
     if(pending.scope==='priceGroup'&&!captured.eligibleProductIds)fail('No hay evidencia de compatibilidad histórica.');
-    const baseline=await checkBaseline(c,product,{createdAt:pending.created_at.toISOString(),date:sale.date},item.baselineTreatment??input.baselineTreatment);
+    const baseline=await checkBaseline(c,product,{createdAt:sale.createdAt??pending.created_at.toISOString(),date:sale.date},item.baselineTreatment??input.baselineTreatment);
     const physical=quantity(item.quantity,item.unit,product.unit),common=quantity(item.quantity,item.unit,pending.unit);
     if(inventoryDecimal(physical)<=0n)fail('Las cantidades deben ser positivas.');total+=inventoryDecimal(common);rows.push({product,physical,baseline});
   }
@@ -162,11 +182,11 @@ export async function syncInventory(c,before,data,name,args){
     }
     await c.query("UPDATE inventory_pending SET state='cancelled' WHERE sale_id=$1 AND state IN ('pending','resolved')",[sale.id]);
     for(const [ordinal,item] of sale.items.entries()) {
-      if(item.reference.kind!=='product'||item.entryMode==='amount')await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});
+      if(item.reference.kind!=='product'||!exactSaleQuantity(item,findProduct(data,item.productId),sale.origin))await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});
       else {
         const product=findProduct(data,item.productId);
         const baseline=await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
-        const physical=inventoryConvert(item.quantity,item.unit,product.unit);
+        const physical=exactSaleQuantity(item,product,sale.origin);
         await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:args[1].reason,saleId:sale.id,saleOrdinal:ordinal,originKey:'correction:'+sale.id+':'+sale.commercialVersion+':'+ordinal,reference:{commercialVersion:sale.commercialVersion,...baseline}});
       }
     }
@@ -185,12 +205,12 @@ export async function syncInventory(c,before,data,name,args){
         const scope=intent.scope;if(!['line','category'].includes(scope))fail('Selecciona línea o categoría para el desglose.');
         const scopeId=scope==='line'?product.lineId:product.categoryId;if(scopeId==null)fail('El producto no pertenece a ese grupo.');
         await addPending(c,sale,ordinal,item,{scope,scopeId,reason:item.entryMode==='amount'?'amount':'group'});
-      }else if(item.entryMode==='amount')await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'amount'});
+      }else if(!exactSaleQuantity(item,product,sale.origin))await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:item.entryMode==='amount'?'amount':'quantity_review'});
       else{
         try{await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date});}catch(error){if(error.code!=='INVENTORY_BASELINE_REVIEW_REQUIRED')throw error;await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'quantity_review'});continue;}
         let physical;
-        try{physical=inventoryConvert(item.quantity,item.unit,product.unit);}catch{await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'quantity_review'});continue;}
-        await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:'Salida por venta con cantidad física',saleId:sale.id,saleOrdinal:ordinal,originKey:`sale:${sale.id}:${ordinal}`,reference:{folio:sale.folio,reasonCode:'sale_known_quantity',reasonCatalogVersion:1,reasonSource:'system'}});
+        try{physical=exactSaleQuantity(item,product,sale.origin);}catch{await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'quantity_review'});continue;}
+        await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:'Salida por venta con cantidad física',saleId:sale.id,saleOrdinal:ordinal,originKey:`sale:${sale.id}:${ordinal}`,reference:{folio:sale.folio,quantityEvidence:item.entryMode==='amount'?(sale.origin==='WEB'?'web_amount_rounded_1_decimal':'exact_monetary_conversion'):'captured_quantity',quantityNumerator:item.quantityNumerator??null,quantityDenominator:item.quantityDenominator??null,reasonCode:'sale_known_quantity',reasonCatalogVersion:1,reasonSource:'system'}});
       }
     }
   }
@@ -212,7 +232,7 @@ export async function syncInventory(c,before,data,name,args){
     await inventoryChange(c,'sale_void',{saleId:sale.id,physicalDisposition:args[1].inventoryReturn,reason:why.text,...why.metadata});
   }
 }
-async function addPending(c,sale,ordinal,item,{scope,scopeId,reason}){
+export async function addPending(c,sale,ordinal,item,{scope,scopeId,reason}){
   let quantity=null;if(item.entryMode!=='amount'){try{quantity=inventoryText(inventoryDecimal(item.quantity));}catch{/* Requiere cantidad física confirmada. */}}
   await c.query('INSERT INTO inventory_pending(id,sale_id,ordinal,product_id,scope,scope_id,quantity,unit,reason,fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[randomUUID(),String(sale.id),ordinal,item.productId==null?null:String(item.productId),scope,String(scopeId),quantity,normalizeUnit(item.unit),reason,digest(item)]);
 }

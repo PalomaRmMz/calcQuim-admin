@@ -616,7 +616,7 @@
               "if (Number.isInteger(value.revision)) pm.collectionVariables.set('revision', String(value.revision));",
               "if (value.generation) pm.collectionVariables.set('generation', value.generation);",
               "pm.collectionVariables.set('saleId', String(value.data.sales[0].id));",
-              "pm.test('Mayoreo 170', () => { if (value.data.sales[0].total !== 170) throw new Error('Importe incorrecto'); });"
+              "pm.test('Normal 200 sin mayoreo configurado', () => { if (value.data.sales[0].total !== 200) throw new Error('Importe incorrecto'); });"
             ]
           }
         }
@@ -764,3 +764,4 @@
     }
   ]
 }
+

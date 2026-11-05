@@ -2,9 +2,13 @@ import FormLabel from "./FormLabel";
 import ValidatedForm from "./ValidatedForm";
 import ModalHeader from "./ModalHeader";
 import { Dialog } from "@mui/material";
-import { useState } from "react";
+import { useState, useContext } from "react";
+import { CatalogContext } from '../context/CatalogHooks.js';
+import { validWholesalePrice } from '../domain/wholesalePricing.mjs';
 
 function PriceGroupFormModal({ show, priceGroup, onClose, onSave }) {
+    const {wholesalePricing} = useContext(CatalogContext) || {};
+    const [wholesalePrice,setWholesalePrice] = useState(priceGroup?.wholesalePrice ?? '');
     const [name, setName] = useState(priceGroup?.name ?? "");
     const [price, setPrice] = useState(priceGroup?.price ?? "");
     const [active, setActive] = useState(priceGroup?.active ?? true);
@@ -16,6 +20,7 @@ function PriceGroupFormModal({ show, priceGroup, onClose, onSave }) {
     async function handleSubmit(event) {
         event.preventDefault();
         setError("");
+        try { validWholesalePrice(wholesalePrice, price); } catch (error) { setError(error.message); return; }
 
         if (!name.trim()) {
             setError("Escribe el nombre del grupo.");
@@ -31,6 +36,7 @@ function PriceGroupFormModal({ show, priceGroup, onClose, onSave }) {
             name: name.trim(),
             price: Number(price),
             active,
+            ...(wholesalePricing ? {wholesalePrice:validWholesalePrice(wholesalePrice,price)} : {}),
         });
 
         if (!result.ok) {
@@ -68,7 +74,7 @@ function PriceGroupFormModal({ show, priceGroup, onClose, onSave }) {
 
                                 <div className="mb-3">
                                     <FormLabel required className="form-label" htmlFor="priceGroupPrice">
-                                        Precio
+                                        Precio normal por litro
                                     </FormLabel>
 
                                     <div className="input-group">
@@ -86,6 +92,7 @@ function PriceGroupFormModal({ show, priceGroup, onClose, onSave }) {
                                     </div>
                                 </div>
 
+                                {wholesalePricing ? <div className="mb-3"><label className="form-label" htmlFor="priceGroupWholesale">Precio de mayoreo por litro</label><div className="input-group"><span className="input-group-text">$</span><input id="priceGroupWholesale" type="number" min="0.01" step="0.01" max={price || undefined} className="form-control" value={wholesalePrice} onChange={e=>setWholesalePrice(e.target.value)}/></div><small className="text-muted">Opcional. Desde 10 L; vacío conserva el precio normal.</small></div> : <p className="text-muted small">Mayoreo pendiente de activación autorizada.</p>}
                                 <div className="form-check form-switch">
                                     <input
                                         id="priceGroupActive"

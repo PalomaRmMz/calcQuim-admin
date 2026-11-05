@@ -1,8 +1,9 @@
 import { normalizeUnit } from './adminUnits.mjs';
 import { normalizeText } from './text.mjs';
+import { wholesaleSettings, WHOLESALE_VERSION, productRates } from '../../../src/domain/wholesalePricing.mjs';
 export { normalizeText } from './text.mjs';
 const same = (a, b) => String(a) === String(b);
-export const PRICING_VERSION = 'admin-sales-v1';
+export const PRICING_VERSION = 'admin-sales-normal-v1';
 export function validateCatalog(snapshot) {
   if (!snapshot || typeof snapshot.generation !== 'string' || !Number.isSafeInteger(snapshot.revision)) throw new Error('Catálogo sin revisión oficial.');
   for (const field of ['products', 'categories', 'productLines', 'priceGroups']) {
@@ -13,7 +14,8 @@ export function validateCatalog(snapshot) {
       ids.add(String(row.id));
     }
   }
-  if (snapshot.pricingVersion !== PRICING_VERSION) throw new Error('Motor de precios incompatible; actualiza la aplicación.');
+  if (![PRICING_VERSION,'admin-sales-v1',WHOLESALE_VERSION].includes(snapshot.pricingVersion)) throw new Error('Motor de precios incompatible; actualiza la aplicación.');
+  if (snapshot.pricingVersion === WHOLESALE_VERSION && snapshot.data.wholesalePricing?.version !== WHOLESALE_VERSION) throw new Error('Falta la configuración oficial de mayoreo.');
   return snapshot;
 }
 export function productPrice(product, groups) {
@@ -25,12 +27,14 @@ export function productPrice(product, groups) {
 export function catalogChoices(data) {
   if (!data) return [];
   const { products, categories, productLines, priceGroups } = data;
+  const settings=wholesaleSettings(data);
   const available = products.filter(p => p.active && p.available !== false && normalizeUnit(p.unit) && productPrice(p, priceGroups) !== null);
   const make = (kind, entity, members, context) => {
     const tariffs = new Map();
     for (const p of members) {
-      const price = productPrice(p, priceGroups), unit = normalizeUnit(p.unit), key = `${price}:${unit}`;
-      if (!tariffs.has(key)) tariffs.set(key, { key, price, unit, productIds: [] });
+      const rates=productRates(p,priceGroups);
+      const price = settings?.version===WHOLESALE_VERSION?rates.normalPrice:productPrice(p, priceGroups), unit = normalizeUnit(p.unit), key = `${price}:${unit}${settings?.version===WHOLESALE_VERSION?`:wholesale:${rates.wholesalePrice??'none'}:source:${rates.priceSource}:${rates.priceSourceId}`:''}`;
+      if (!tariffs.has(key)) tariffs.set(key, { key, price, unit, productIds: [], ...(settings?.version===WHOLESALE_VERSION?{wholesalePrice:rates.wholesalePrice,pricingVersion:WHOLESALE_VERSION,amountPolicy:settings.amountPolicy,priceSource:rates.priceSource,priceSourceId:rates.priceSourceId}: {}) });
       tariffs.get(key).productIds.push(p.id);
     }
     return { key: `${kind}:${entity.id}`, kind, refId: entity.id, name: entity.name, context, tariffs: [...tariffs.values()] };
