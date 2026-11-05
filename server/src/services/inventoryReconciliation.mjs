@@ -7,13 +7,14 @@ export function planInventoryReconciliation(data,view,{cutoff,confirmations={}}=
   if(!cutoff||!Number.isFinite(Date.parse(cutoff)))throw new Error('Corte de auditoría obligatorio.');
   const rows=[];
   for(const sale of data.sales.filter(s=>Date.parse(s.createdAt??s.date)<=Date.parse(cutoff)))for(const[itemOrdinal,item]of sale.items.entries()) {
+    if(item.lineType==='service')continue;
     const key=String(sale.id)+':'+itemOrdinal;
     const all=view.movements.filter(m=>m.sale_id===String(sale.id)&&m.sale_ordinal===itemOrdinal);
     const active=all.filter(m=>m.kind==='sale'&&!view.movements.some(r=>r.reversal_of===m.id));
     const pending=view.pending.find(p=>p.sale_id===String(sale.id)&&p.ordinal===itemOrdinal&&p.state!=='cancelled');
     const product=data.products.find(p=>String(p.id)===String(item.productId));
     const account=view.products.find(p=>String(p.productId)===String(item.productId));
-    const group=(item.reference&&item.reference.kind!=='product')||(pending&&pending.scope!=='product');
+    const group=(item.reference&&!['product','presentation'].includes(item.reference.kind))||(pending&&pending.scope!=='product');
     const row={key,saleId:sale.id,ordinal:itemOrdinal,folio:sale.folio,date:sale.date,origin:sale.origin??'WEB',productId:product?.id??null,fingerprint:digest(item),movementIds:active.map(m=>m.id).sort(),pendingId:pending?.id??null,anchorId:account?.anchorId??null,status:'review',operation:null,quantity:null,unit:product?.unit??item.unit};
     if(sale.voidedAt){
       const disposition=view.changes.find(c=>c.action==='sale_void'&&String(c.reference.saleId)===String(sale.id))?.reference.physicalDisposition;

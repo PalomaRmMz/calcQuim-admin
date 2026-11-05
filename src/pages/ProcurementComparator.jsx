@@ -1,3 +1,4 @@
+import {supplierActivityLabel} from '../domain/activityScope.mjs';
 import { getProductChoiceLabels } from "../utils/catalogUtils.js";
 import { categoryStyle } from '../utils/categoryColors.js';
 import { faClockRotateLeft } from '@fortawesome/free-solid-svg-icons';
@@ -90,9 +91,10 @@ export default function ProcurementComparator() {
         { id: 'details', header: 'Detalles', enableSorting: false, Cell: ({ row }) => <ComparatorMobileDetails key={row.original.id} group={row.original} columns={alternativeColumns} /> },
     ], [categories, productLines, alternativeColumns]);
     return <><ContentPanel title="Comparador de abastecimiento" subtitle="Una fila por producto. Compara costos confirmados y despliega alternativas e historial.">
+        {data.suppliers.some(s=>s.businessActivity==null)&&<p role="status">Los proveedores históricos sin giro permanecen visibles, pendientes de clasificación. No se les asigna un giro automáticamente.</p>}
         <FilterBar onClear={() => { setProductId(""); setSupplierId(""); setCategoryId(""); setLineId(""); setType(""); setAge(""); setStatus("active"); setReferenceId(""); setSearch(""); }}>
             <Field label="Producto final" value={productId} onChange={(e) => { setProductId(e.target.value); setReferenceId(""); setSearch(""); }}><option value="">Todos los productos</option>{productOptions}</Field>
-            <Field label="Proveedor" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}><option value="">Todos</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Field>
+            <Field label="Proveedor" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}><option value="">Todos</option>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.businessActivity==null?' · '+supplierActivityLabel(null):''}</option>)}</Field>
         </FilterBar>
         <details className="filter-details"><summary>Más filtros{[categoryId, lineId, type, age, status !== "active"].filter(Boolean).length > 0 ? " · Hay filtros adicionales aplicados" : ""}</summary><div className="filter-bar mt-3">
             <Field label="Categoría" value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setLineId(""); setProductId(""); setReferenceId(""); setSearch(""); }}><option value="">Todas</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Field>

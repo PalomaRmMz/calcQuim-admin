@@ -17,9 +17,10 @@ import { inventoryDecimal,inventoryText } from '../services/inventoryUnits.js';
 function Field({id,label,required=false,children}){
     return <div className="mb-3"><FormLabel htmlFor={id} required={required}>{label}</FormLabel>{cloneElement(children,{id,required,className:children.type==='select'?'form-select':'form-control'})}</div>;
 }
-export default function InventoryProductModal({product,view,data,categories,productLines,onClose,onSave}){
+export default function InventoryProductModal({activity='LIMPIEZA',product,view,data,categories,productLines,onClose,onSave}){
     const [tab,setTab]=useState(product.quantity===null?'estimate':'movement');
-    const [kind,setKind]=useState('prepared'),[quantity,setQuantity]=useState(''),[unit,setUnit]=useState(product.unit);
+    const initialKind=activity==='JARCERIA'?'adjustment':'prepared';
+    const [kind,setKind]=useState(initialKind),[quantity,setQuantity]=useState(''),[unit,setUnit]=useState(product.unit);
     const [reason,setReason]=useState(emptyInventoryReason),[occurredAt,setOccurredAt]=useState(''),[baseline,setBaseline]=useState('');
     const [minimum,setMinimum]=useState(product.minimum??''),[batch,setBatch]=useState(product.usualBatch??'');
     const [purchaseId,setPurchaseId]=useState(''),[purchaseOrdinal,setPurchaseOrdinal]=useState(''),[saleId,setSaleId]=useState('');
@@ -27,13 +28,13 @@ export default function InventoryProductModal({product,view,data,categories,prod
     const saving=useRef(false);
     const [initial]=useState(()=>({minimum:product.minimum??'',batch:product.usualBatch??'',unit:product.unit}));
     const [discardAction,setDiscardAction]=useState(null);
-    const dirty=kind!=='prepared'||quantity!==''||Object.values(reason).some(Boolean)||occurredAt!==''||baseline!==''||unit!==initial.unit||minimum!==initial.minimum||batch!==initial.batch||purchaseId!==''||saleId!==''||reverseId!=='';
+    const dirty=kind!==initialKind||quantity!==''||Object.values(reason).some(Boolean)||occurredAt!==''||baseline!==''||unit!==initial.unit||minimum!==initial.minimum||batch!==initial.batch||purchaseId!==''||saleId!==''||reverseId!=='';
     function leave(action){if(saving.current)return;if(dirty)setDiscardAction(()=>action);else action();}
     const requestClose=()=>leave(onClose);
     const name=getProductDisplayName(product,categories,productLines),movements=view.movements.filter(m=>m.product_id===String(product.productId));
     const purchase=data.procurement.purchases.find(p=>String(p.id)===purchaseId);
     const changes=view.changes.filter(c=>String(c.reference.productId)===String(product.productId));
-    function switchTab(next){if(next===tab)return;leave(()=>{setKind('prepared');setMinimum(initial.minimum);setBatch(initial.batch);setPurchaseId('');setPurchaseOrdinal('');setSaleId('');setTab(next);setQuantity('');setReason(emptyInventoryReason());setOccurredAt('');setBaseline('');setReverseId('');setError('');setUnit(product.unit);});}
+    function switchTab(next){if(next===tab)return;leave(()=>{setKind(initialKind);setMinimum(initial.minimum);setBatch(initial.batch);setPurchaseId('');setPurchaseOrdinal('');setSaleId('');setTab(next);setQuantity('');setReason(emptyInventoryReason());setOccurredAt('');setBaseline('');setReverseId('');setError('');setUnit(product.unit);});}
     const reasonContext=tab==='estimate'?'initial':tab==='initialCorrection'?'initial_correction':tab==='movement'&&kind==='count'?'count':tab==='replenishment'?'replenishment':tab==='history'?'reversal':movementReasonContext(['outflow','positive_adjustment'].includes(kind)?'adjustment':kind,quantity,kind==='outflow'?{entryType:'justified_outflow'}:kind==='positive_adjustment'?{entryType:'positive_adjustment'}:null);
     async function submit(){
         if(saving.current)return;saving.current=true;setBusy(true);setError('');
@@ -75,7 +76,7 @@ export default function InventoryProductModal({product,view,data,categories,prod
         {!product.initialMovementId&&<h3 className="h6 mt-3">Registrar inventario inicial</h3>}{product.initialMovementId&&<nav className="inventory-modal-tabs page-tabs" aria-label="Ficha de inventario">{(product.initialMovementId?[['estimate','Inventario inicial'],['movement','Movimientos'],['initialCorrection','Correcciones'],['history','Historial'],['replenishment','Reposici\u00f3n']]:[['estimate','Registrar inventario inicial']]).map(([id,label])=><button type="button" key={id} className={`btn btn-sm ${tab===id?'btn-primary':'btn-outline-secondary'}`} aria-current={tab===id?'page':undefined} disabled={busy} onClick={()=>switchTab(id)}>{label}</button>)}</nav>}
         {error&&<p className="alert alert-danger" role="alert">{error}</p>}
         {tab==='estimate'&&product.initialMovementId?<p>El inventario inicial ya está registrado. Para corregir un error utiliza Correcciones. Para actualizar el saldo actual utiliza Movimientos / Conteo físico.</p>:(tab==='estimate'||tab==='movement')&&<>
-            {tab==='estimate'?<p>Registra una sola vez el punto de partida aproximado. No es una entrada. Vacío significa sin determinar; cero se registra únicamente si lo capturas expresamente.</p>:<Field id="inventory-kind" label="Tipo de movimiento" required><select value={kind} onChange={e=>{setKind(e.target.value);setReason(emptyInventoryReason());setQuantity('');setPurchaseId('');setPurchaseOrdinal('');setSaleId('');setBaseline('');setOccurredAt('');}}>{Object.entries(inventoryKinds).filter(([k])=>!['estimate','sale','reversal'].includes(k)).map(([id,label])=><option key={id} value={id}>{label}</option>)}<option value="count">Conteo físico del saldo actual</option><option value="positive_adjustment">Ajuste positivo (entrada)</option><option value="outflow">Salida justificada</option></select></Field>}
+            {tab==='estimate'?<p>Registra una sola vez el punto de partida aproximado. No es una entrada. Vacío significa sin determinar; cero se registra únicamente si lo capturas expresamente.</p>:<Field id="inventory-kind" label="Tipo de movimiento" required><select value={kind} onChange={e=>{setKind(e.target.value);setReason(emptyInventoryReason());setQuantity('');setPurchaseId('');setPurchaseOrdinal('');setSaleId('');setBaseline('');setOccurredAt('');}}>{Object.entries(inventoryKinds).filter(([k])=>!['estimate','sale','reversal'].includes(k)&&(activity!=='JARCERIA'||!['prepared','receipt'].includes(k))).map(([id,label])=><option key={id} value={id}>{label}</option>)}<option value="count">Conteo físico del saldo actual</option><option value="positive_adjustment">Ajuste positivo (entrada)</option><option value="outflow">Salida justificada</option></select></Field>}
             <div className="row"><div className="col-sm-7"><Field id="inventory-quantity" label="Cantidad" required><input type="number" min={tab==='estimate'||kind==='count'?'0':['prepared','receipt','outflow','waste','positive_adjustment','return'].includes(kind)?'0.000001':undefined} step="0.000001" value={quantity} onChange={e=>setQuantity(e.target.value)}/></Field></div><div className="col-sm-5"><Field id="inventory-unit" label="Unidad" required><select value={unit} onChange={e=>setUnit(e.target.value)}>{UNITS.map(u=><option value={u.id} key={u.id}>{u.label}</option>)}</select></Field></div></div>
             {tab==='movement'&&kind==='waste'&&<p>Indica la cantidad positiva perdida. Se restará del saldo actual.</p>}
             {tab==='movement'&&kind==='outflow'&&<p>Indica la cantidad positiva que sale. Se guardará como un ajuste negativo con el motivo indicado.</p>}

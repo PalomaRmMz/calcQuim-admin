@@ -1,3 +1,5 @@
+import {commerceReport} from '../../../src/domain/commerce.mjs';
+import {commercialImport} from '../services/commerce.mjs';
 import { Router } from 'express';
 import { ApiError } from '../services/commands.mjs';
 import { procurementAnalytics } from '../../../src/utils/purchaseAnalytics.js';
@@ -17,7 +19,7 @@ const resources={
   'supplier-costs':['supplierPrices','addSupplierPrice'],
   purchases:['purchases','savePurchase','savePurchase'], sales:['sales','createSale'],
 };
-export function dataRouter(service) {
+export function dataRouter(service,mode='synthetic') {
   const r=Router();
   r.use((req,_res,next)=>{
     if(['POST','PATCH','PUT'].includes(req.method)&&(!req.body||typeof req.body!=='object'||Array.isArray(req.body))) throw new ApiError(400,'INVALID_BODY','Se requiere un objeto JSON.');
@@ -25,6 +27,8 @@ export function dataRouter(service) {
   });
   const {run,read}=createDataController(service);
   r.get('/dataset',read);
+  r.get('/commerce/import-preview',async(req,res)=>res.json(commercialImport((await service.read()).data,{activity:req.query.activity},true)));
+  if(mode!=='operational')r.get('/commerce/reports',async(req,res)=>res.json(commerceReport((await service.read()).data.sales,req.query.from,req.query.to)));
   r.get('/reports/general-catalog',async(_req,res)=>{
     const snapshot=await service.read();
     const data=Object.fromEntries(['products','categories','productLines','priceGroups'].map(name=>[name,snapshot.data[name]]));

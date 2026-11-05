@@ -1,3 +1,4 @@
+import {commerceChoices} from '../../../src/domain/commerce.mjs';
 import { normalizeUnit } from './adminUnits.mjs';
 import { normalizeText } from './text.mjs';
 import { wholesaleSettings, WHOLESALE_VERSION, productRates } from '../../../src/domain/wholesalePricing.mjs';
@@ -28,7 +29,7 @@ export function catalogChoices(data) {
   if (!data) return [];
   const { products, categories, productLines, priceGroups } = data;
   const settings=wholesaleSettings(data);
-  const available = products.filter(p => p.active && p.available !== false && normalizeUnit(p.unit) && productPrice(p, priceGroups) !== null);
+  const available = products.filter(p => p.activity!=='JARCERIA' && p.active && p.available !== false && normalizeUnit(p.unit) && productPrice(p, priceGroups) !== null);
   const make = (kind, entity, members, context) => {
     const tariffs = new Map();
     for (const p of members) {
@@ -40,6 +41,7 @@ export function catalogChoices(data) {
     return { key: `${kind}:${entity.id}`, kind, refId: entity.id, name: entity.name, context, tariffs: [...tariffs.values()] };
   };
   return [
+    ...commerceChoices(data),
     ...available.map(p => {
       const c = categories.find(c => same(c.id, p.categoryId)), l = productLines.find(l => same(l.id, p.lineId));
       const g = priceGroups.find(g => same(g.id, p.priceGroupId));
@@ -54,6 +56,6 @@ export function catalogChoices(data) {
 export function searchChoices(choices, query, usage = {}) {
   const text = normalizeText(query), words = text.split(' ').filter(Boolean);
   const score = c => (normalizeText(c.name) === text && text ? 100000 : 0) + (usage[c.key]?.count || 0) * 10 + (usage[c.key]?.at ? Date.parse(usage[c.key].at) / 1e13 : 0);
-  return choices.filter(c => words.every(w => normalizeText(`${c.name} ${c.context}`).includes(w)))
+  return choices.filter(c => words.every(w => normalizeText(`${c.name} ${c.context||''} ${(c.aliases||[]).join(' ')}`).includes(w)))
     .sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name, 'es'));
 }

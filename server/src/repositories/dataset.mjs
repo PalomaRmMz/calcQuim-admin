@@ -21,6 +21,10 @@ export async function readDataset(c, lock = false, allowRehearsal = false) {
     if (Object.hasOwn(data, name)) data[name] = rows;
     else data.procurement[name] = rows;
   }
+  if(state.metadata.commerceSchema===1){
+    data.procurement.presentations=(await c.query('SELECT record FROM commercial_presentations ORDER BY id')).rows.map(r=>r.record);
+    data.procurement.services=(await c.query('SELECT record FROM commercial_services ORDER BY id')).rows.map(r=>r.record);
+  }
   // Leer los detalles por lote: el número de consultas no crece por cada folio.
   async function grouped(table,parent,ordered=true){
     const groups=new Map();
@@ -75,6 +79,13 @@ export async function writeDataset(c, data, counters) {
     }
     await c.query(`DELETE FROM ${table} WHERE NOT(id=ANY($1::text[]))`,[rows.map(r=>key(r.id))]);
   }
+  if(data.procurement.organizationSchema===1)for(const supplier of data.procurement.suppliers)await c.query('UPDATE suppliers SET business_activity=$2 WHERE id=$1',[key(supplier.id),supplier.businessActivity??null]);
+  const commerce=data.procurement.commerceSchema===1;
+  if(commerce){
+    for(const p of data.products)await c.query('UPDATE products SET activity=$2 WHERE id=$1',[key(p.id),p.activity??null]);
+    for(const p of data.procurement.presentations||[])await insert(c,'commercial_presentations',{id:p.id,product_id:key(p.productId),record:JSON.stringify(p),unit:p.unit,factor:p.factor,price:p.price},['id']);
+    for(const s of data.procurement.services||[])await insert(c,'commercial_services',{id:s.id,record:JSON.stringify(s),unit:s.unit,price_mode:s.priceMode,price:s.price??null},['id']);
+  }
   // Detalles derivados del agregado validado; historial íntegro en cada revisión.
   for (const table of ['source_yield_overrides','purchase_items','purchase_revisions','purchase_receipts','sale_items']) await c.query(`DELETE FROM ${table}`);
   for (const source of data.procurement.supplyItems) for (const [conversionId,rule] of Object.entries(source.yieldOverrides || {})) {
@@ -85,8 +96,8 @@ export async function writeDataset(c, data, counters) {
     for (const [ordinal,r] of (p.revisions ?? []).entries()) await insert(c,'purchase_revisions',{purchase_id:key(p.id),ordinal,record:JSON.stringify(r)},['purchase_id','ordinal']);
     if (p.receipt) await insert(c,'purchase_receipts',{purchase_id:key(p.id),record:JSON.stringify(p.receipt),sha256:digest(Buffer.from(p.receipt.dataUrl.split(',')[1],'base64'))},['purchase_id']);
   }
-  for (const s of data.sales) for (const [ordinal,r] of s.items.entries()) await insert(c,'sale_items',{sale_id:key(s.id),ordinal,product_id:key(r.productId),record:JSON.stringify(r),quantity:r.quantity,unit:r.unit,price:r.price,amount:r.amount},['sale_id','ordinal']);
+  for (const s of data.sales) for (const [ordinal,r] of s.items.entries()) await insert(c,'sale_items',{sale_id:key(s.id),ordinal,product_id:key(r.productId),record:JSON.stringify(r),quantity:r.quantity,unit:r.unit,price:r.price,amount:r.amount,...(commerce?{activity:r.activity??null,line_type:r.lineType??null,presentation_id:r.presentationId??null,service_id:r.serviceId??null,base_quantity:r.baseQuantity??null}:{})},['sale_id','ordinal']);
   await c.query('UPDATE dataset_state SET revision=revision+1,metadata=$1,counters=$2 WHERE singleton=true',[
-    JSON.stringify(omit(data.procurement,Object.keys(collections))),JSON.stringify(counters),
+    JSON.stringify(omit(data.procurement,[...Object.keys(collections),'presentations','services'])),JSON.stringify(counters),
   ]);
 }

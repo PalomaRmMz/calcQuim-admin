@@ -1,0 +1,16 @@
+INSERT INTO units(code,dimension,factor) VALUES ('paquete','paquete',1),('carga','carga',1),('servicio','servicio',1);
+CREATE TABLE commercial_presentations(id text PRIMARY KEY,product_id text NOT NULL REFERENCES products(id) DEFERRABLE INITIALLY DEFERRED,record jsonb NOT NULL,unit text NOT NULL REFERENCES units(code),factor numeric NOT NULL CHECK(factor>0),price numeric NOT NULL CHECK(price>=0),UNIQUE(id,product_id));
+CREATE TABLE commercial_services(id text PRIMARY KEY,record jsonb NOT NULL,unit text NOT NULL REFERENCES units(code),price_mode text NOT NULL CHECK(price_mode IN ('fixed','custom')),price numeric CHECK(price>=0),CHECK((price_mode='fixed' AND price IS NOT NULL) OR (price_mode='custom' AND price IS NULL)));
+ALTER TABLE products ADD COLUMN activity text CHECK(activity IN ('LIMPIEZA','JARCERIA'));
+ALTER TABLE products ADD CONSTRAINT product_physical_unit CHECK(unit NOT IN ('carga','servicio'));
+ALTER TABLE products ADD CONSTRAINT hardware_presentation_pricing CHECK(activity IS DISTINCT FROM 'JARCERIA' OR (unit NOT IN ('litro','mililitro') AND price IS NULL AND price_group_id IS NULL AND wholesale_price IS NULL));
+ALTER TABLE sale_items ADD COLUMN activity text CHECK(activity IN ('LIMPIEZA','JARCERIA','LAVANDERIA'));
+ALTER TABLE sale_items ADD COLUMN line_type text CHECK(line_type IN ('physical','service'));
+ALTER TABLE sale_items ADD COLUMN presentation_id text;
+ALTER TABLE sale_items ADD COLUMN service_id text REFERENCES commercial_services(id) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE sale_items ADD COLUMN base_quantity numeric CHECK(base_quantity>0);
+ALTER TABLE sale_items ADD FOREIGN KEY(presentation_id,product_id) REFERENCES commercial_presentations(id,product_id) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE sale_items DROP CONSTRAINT sale_reference_required;
+ALTER TABLE sale_items ADD CONSTRAINT sale_reference_required CHECK(product_id IS NOT NULL OR (record->'reference'->>'kind' IN ('line','category','priceGroup') AND record->'reference'->>'id' IS NOT NULL) OR (service_id IS NOT NULL AND record->'reference'->>'kind'='service' AND record->'reference'->>'id'=service_id));
+ALTER TABLE sale_items ADD CONSTRAINT commercial_line_integrity CHECK(COALESCE((line_type IS NULL AND presentation_id IS NULL AND service_id IS NULL AND base_quantity IS NULL) OR (line_type='physical' AND activity='JARCERIA' AND presentation_id IS NOT NULL AND product_id IS NOT NULL AND service_id IS NULL AND base_quantity IS NOT NULL) OR (line_type='service' AND activity='LAVANDERIA' AND service_id IS NOT NULL AND product_id IS NULL AND presentation_id IS NULL AND base_quantity IS NULL) OR (line_type='physical' AND activity='LIMPIEZA' AND service_id IS NULL AND presentation_id IS NULL),false));
+UPDATE dataset_state SET metadata=metadata||'{"commerceSchema":1}'::jsonb;

@@ -1,3 +1,4 @@
+import {COMMERCE_VERSION} from '../../../src/domain/commerce.mjs';
 import { Router, json } from 'express';
 import { timingSafeEqual } from 'node:crypto';
 import { ApiError } from '../services/commands.mjs';
@@ -12,10 +13,12 @@ export function mobileRouter(service, { mode = 'synthetic', token = '', enabled 
     if (!authorized(req.get('Authorization')?.replace(/^Bearer /, '') || '', token)) throw new ApiError(401, 'MOBILE_AUTH_REQUIRED', 'Credencial móvil inválida.');
     next();
   }, json({ limit: '256kb' }));
-  r.get('/catalog', async (_req, res) => {
+  r.get('/catalog', async (req, res) => {
     const s = await service.read();
     const settings=wholesaleSettings(s.data);
-    res.json({ commercialOptions: commercialChoices(s.data), commercialOptionsVersion: 'official-relations-v1', data: {...Object.fromEntries(['categories', 'productLines', 'priceGroups', 'products'].map(k => [k, s.data[k]])),...(settings?.version===WHOLESALE_VERSION?{wholesalePricing:settings}: {})}, revision: s.revision, generation: s.generation, pricingVersion: settings?.version===WHOLESALE_VERSION?WHOLESALE_VERSION:PRICING_VERSION, environment:mode, salesEnabled:true, generatedAt: new Date().toISOString() });
+    const capable=mode!=='operational'&&req.get('X-CalcQuim-Capabilities')?.split(',').includes(COMMERCE_VERSION);
+    const data=capable?s.data:{...s.data,products:s.data.products.filter(p=>p.activity!=='JARCERIA'),procurement:{wholesalePricing:s.data.procurement.wholesalePricing}};
+    res.json({ ...(capable?{capabilities:[COMMERCE_VERSION]}:{}), commercialOptions: commercialChoices(data), commercialOptionsVersion: 'official-relations-v1', data: {...Object.fromEntries(['categories', 'productLines', 'priceGroups', 'products'].map(k => [k, data[k]])),...(capable?{presentations:s.data.procurement.presentations||[],services:s.data.procurement.services||[]}:{}),...(settings?.version===WHOLESALE_VERSION?{wholesalePricing:settings}: {})}, revision: s.revision, generation: s.generation, pricingVersion: settings?.version===WHOLESALE_VERSION?WHOLESALE_VERSION:PRICING_VERSION, environment:mode, salesEnabled:true, generatedAt: new Date().toISOString() });
   });
   r.get('/sales/status/:key', async (req, res) => {
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(req.params.key)) throw new ApiError(400, 'INVALID_KEY', 'Clave inválida.');
@@ -25,9 +28,10 @@ export function mobileRouter(service, { mode = 'synthetic', token = '', enabled 
     const key = req.get('Idempotency-Key');
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(key || '')) throw new ApiError(400, 'INVALID_KEY', 'Clave inválida.');
     const body = req.body;
+    if(mode==='operational'&&(body?.commerceVersion||body?.items?.some(item=>['presentation','service'].includes(item.reference?.kind))))throw new ApiError(403,'WEB_ONLY_COMMERCE','Jarcería y lavandería están habilitadas únicamente en la web.');
     if (!body || !Array.isArray(body.items)) throw new ApiError(400, 'INVALID_BODY', 'Venta inválida.');
     if (![PRICING_VERSION,WHOLESALE_VERSION].includes(body.pricingVersion)) throw new ApiError(409,'PRICING_CLIENT_UPDATE_REQUIRED','Actualiza la aplicación y sincroniza el catálogo. No se aceptan descuentos porcentuales anteriores.');
-    const s = await service.command({ name: 'createMobileSale', args: [{ payment: body.payment, items: body.items, pricingVersion:body.pricingVersion }], revision: body.revision, generation: body.generation, requestKey: `mobile:${key}`, channel: 'MOVIL' });
+    const s = await service.command({ name: 'createMobileSale', args: [{ ...(body.commerceVersion?{commerceVersion:body.commerceVersion}:{}),payment: body.payment, items: body.items, pricingVersion:body.pricingVersion }], revision: body.revision, generation: body.generation, requestKey: `mobile:${key}`, channel: 'MOVIL' });
     res.json({ receipt: s.result.receipt, inventoryPending:s.inventoryPending.filter(p=>p.saleId===s.result.receipt.id), revision:s.revision, generation:s.generation });
   });
   return r;

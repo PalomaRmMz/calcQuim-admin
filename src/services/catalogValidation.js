@@ -22,6 +22,8 @@ export function catalogCollectionError(key, entries) {
         names.add(identity);
         for (const field of ["active", "available", "useAsProductPrefix"]) if (entry[field] != null && typeof entry[field] !== "boolean") return `El estado ${field} no es válido.`;
         if (key.endsWith("_products") && !normalizeUnit(entry.unit)) return "Hay un producto con unidad desconocida.";
+        if (key.endsWith('_products') && ['carga','servicio'].includes(normalizeUnit(entry.unit))) return 'Configura las cargas y servicios en Lavandería, sin inventario físico.';
+        if (key.endsWith('_products') && entry.activity==='JARCERIA' && (['litro','mililitro'].includes(normalizeUnit(entry.unit)) || entry.price!=null || entry.priceGroupId!=null || entry.wholesalePrice!=null)) return 'Configura el precio de jarcería en sus presentaciones; conserva una unidad base física compatible.';
         if (entry.price != null && parseCatalogPrice(entry.price) === null) return "Hay un precio inválido.";
         if (entry.wholesalePrice != null) {
             try { validWholesalePrice(entry.wholesalePrice, entry.price); }

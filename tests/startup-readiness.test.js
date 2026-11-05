@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {waitForDatabase,optionalMobile} from '../scripts/startup-readiness.mjs';
+import {waitForDatabase,waitForFrontend,optionalMobile} from '../scripts/startup-readiness.mjs';
 
 test('espera a PostgreSQL durante la recuperación al encender Windows',async()=>{
   let time=0,calls=0;
@@ -21,4 +21,18 @@ test('un Wi-Fi no disponible permite continuar con el escritorio y deja aviso',a
   assert.equal(warned,true);
   const server={close(){}};
   assert.equal(await optionalMobile(async()=>server,()=>assert.fail()),server);
+});
+
+test('el arranque web reintenta una transformación inicial lenta y conserva su resultado',async()=>{
+  let calls=0,time=0;
+  const value=await waitForFrontend(async()=>{if(++calls<3)throw Object.assign(new Error(),{name:'TimeoutError'});return 'verified';},{now:()=>time,sleep:async ms=>{time+=ms;}});
+  assert.equal(value,'verified');assert.equal(calls,3);
+});
+
+test('el arranque web rechaza inmediatamente un entorno o dataset incorrecto',async()=>{
+  let calls=0;await assert.rejects(waitForFrontend(async()=>{calls++;throw Error('REACT_MISMATCH');}),/REACT_MISMATCH/);assert.equal(calls,1);
+});
+
+test('el arranque web no espera indefinidamente una conexión fallida',async()=>{
+  let time=0;await assert.rejects(waitForFrontend(async()=>{throw Object.assign(new Error(),{cause:{code:'ECONNREFUSED'}});},{timeoutMs:1000,now:()=>time,sleep:async ms=>{time+=ms;}}));assert.equal(time,1000);
 });

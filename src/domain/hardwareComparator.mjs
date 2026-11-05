@@ -1,0 +1,19 @@
+import {convertQuantity} from '../utils/units.js';
+import {validDate} from '../utils/procurementUtils.js';
+import {decimal} from './commerce.mjs';
+import {supplierMatches} from './activityScope.mjs';
+const same=(a,b)=>String(a)===String(b);
+export function hardwareComparison(data,productId,today){
+ const product=data.products.find(p=>same(p.id,productId)&&p.activity==='JARCERIA');
+ if(!product)return {product:null,offers:[],history:[],best:null};
+ const model=data.procurement,history=[],sources=model.supplyItems.filter(s=>model.supplyConversions.some(c=>c.active&&c.purchasedItemId===s.purchasedItemId&&same(c.outputProductId,product.id)));
+ const observe=(row)=>{row={...row,date:String(row.date||'')};const supplier=model.suppliers.find(s=>s.id===row.supplierId);let base=null,reason='';try{base=convertQuantity(row.baseQuantity,row.baseUnit,product.unit);if(base==null||base<=0||!Number.isFinite(row.total)||row.total<0)throw Error();decimal(base);decimal(row.total,2,false);}catch{reason='Contenido o unidad no comparable; no se supone equivalencia.';base=null;}if(!supplierMatches(supplier,'JARCERIA'))reason=supplier?.businessActivity==null?'Proveedor pendiente de clasificación.':'Proveedor clasificado en otra actividad.';if(supplier?.active===false)reason='Proveedor inactivo.';if(row.expired)reason='Costo informado vencido.';if(!validDate(row.date))reason='Fecha de costo no válida.';const valid=base!=null&&!reason&&product.active!==false;history.push({...row,supplierName:supplier?.name||row.supplierNameSnapshot||'Proveedor histórico',baseQuantity:base,baseUnit:product.unit,unitCost:base==null?null:row.total/base,comparable:valid,reason});};
+ for(const purchase of model.purchases.filter(p=>!p.voidedAt))for(const item of purchase.items){const c=item.commercialPurchase;if(!c||!same(item.productId,product.id))continue;observe({id:purchase.id+':'+item.id,offerKey:purchase.supplierId+':presentation:'+c.presentationId,supplierId:purchase.supplierId,supplierNameSnapshot:purchase.supplierNameSnapshot,name:c.name,quantity:c.quantity,unit:c.unit,total:item.total,baseQuantity:c.baseQuantity,baseUnit:c.baseUnit,date:purchase.date,createdAt:purchase.createdAt,source:'Compra real',purchaseId:purchase.id});}
+ for(const quote of model.supplierPrices){const source=sources.find(s=>s.id===quote.supplyItemId),article=model.purchasedItems.find(a=>a.id===source?.purchasedItemId);if(!source)continue;const historical=quote.snapshot?.purchasedItemId===source.purchasedItemId,physical=article?.sourcingType==='READY_TO_USE';observe({id:quote.id,offerKey:quote.supplierId+':source:'+quote.supplyItemId,supplierId:quote.supplierId,supplierNameSnapshot:quote.supplierNameSnapshot,name:quote.snapshot?.name||article?.name,quantity:quote.priceQuantity,unit:quote.priceUnit,total:quote.price,baseQuantity:historical&&physical?quote.priceQuantity:null,baseUnit:quote.priceUnit,date:quote.quotedAt,createdAt:quote.createdAt,source:'Costo informado',expired:!!quote.validUntil&&quote.validUntil<today});}
+ const latest=new Map();for(const row of history){const old=latest.get(row.offerKey);if(!old||row.date>old.date||row.date===old.date&&(row.createdAt||'')>(old.createdAt||''))latest.set(row.offerKey,row);}
+ const offers=[...latest.values()];
+ for(const source of sources)if(!offers.some(o=>o.supplierId===source.supplierId)){const supplier=model.suppliers.find(s=>s.id===source.supplierId);offers.push({id:'empty:'+source.id,supplierId:source.supplierId,supplierName:supplier?.name,name:source.presentation||product.name,comparable:false,unitCost:null,reason:'Sin costo registrado.',baseUnit:product.unit});}
+ const comparable=offers.filter(o=>o.comparable);
+ comparable.sort((a,b)=>{const left=decimal(a.total,2,false)*decimal(b.baseQuantity),right=decimal(b.total,2,false)*decimal(a.baseQuantity);return left===right?0:left<right?-1:1;});
+ return {product,offers,history:history.sort((a,b)=>b.date.localeCompare(a.date)),best:comparable[0]||null};
+}

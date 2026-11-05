@@ -1,0 +1,32 @@
+import ModalHeader from './ModalHeader';
+import {Autocomplete,TextField} from '@mui/material';
+import '../styles/components/SaleFormModal.css';
+import {useState} from 'react';
+import {Dialog,DialogContent,DialogActions,Button} from '@mui/material';
+import {catalogChoices,searchChoices} from '../../server/src/mobile/catalog.mjs';
+import {makeLine,repriceLines,requestBody,total,money} from '../../server/src/mobile/sale.mjs';
+import {COMMERCE_VERSION} from '../domain/commerce.mjs';
+import {wholesaleSettings} from '../domain/wholesalePricing.mjs';
+
+export default function CommercialSaleForm({snapshot,onSave,onClose}){
+ const [query,setQuery]=useState(''),[selection,setSelection]=useState(null),[tariffKey,setTariffKey]=useState(''),[mode,setMode]=useState('quantity'),[value,setValue]=useState(''),[confirmed,setConfirmed]=useState(''),[addons,setAddons]=useState([]),[description,setDescription]=useState(''),[lines,setLines]=useState([]),[payment,setPayment]=useState('Efectivo'),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const data={...snapshot.data,wholesalePricing:wholesaleSettings(snapshot.data)},choices=catalogChoices(data),choice=choices.find(c=>c.key===selection),tariff=choice?.tariffs.find(t=>t.key===tariffKey),custom=tariff?.service?.priceMode==='custom',commercial=!!tariff?.commerceVersion;
+ const matches=query.trim()?searchChoices(choices,query).slice(0,30):[];
+ function select(c){setSelection(c.key);setTariffKey(c.tariffs.length===1?c.tariffs[0].key:'');setValue('');setConfirmed('');setAddons([]);setDescription('');setMode(c.kind==='service'&&c.tariffs[0].service?.priceMode==='custom'?'amount':'quantity');setError('');}
+ function clear(){setSelection(null);setQuery('');setValue('');setConfirmed('');setAddons([]);setDescription('');}
+ function add(){try{const line=makeLine(choice,tariff,custom?'amount':mode,value,crypto.randomUUID(),confirmed,{addons,description});setLines(repriceLines([...lines,line]));setError('');clear();}catch(e){setError(e.message);}}
+ async function save(){if(busy)return;setBusy(true);try{const body=requestBody({lines,payment},{...snapshot,pricingVersion:data.wholesalePricing?.version??'admin-sales-normal-v1'});const result=await onSave({...body,commerceVersion:COMMERCE_VERSION});if(result.ok)onClose();else setError(result.message);}catch(e){setError(e.message);}finally{setBusy(false);}}
+ return <Dialog className="app-dialog" open fullWidth maxWidth="md" onClose={busy?undefined:onClose} PaperProps={{className:"sale-modal"}} aria-labelledby="commercial-sale-title"><ModalHeader titleId="commercial-sale-title" title="Registrar venta" subtitle="Productos y servicios en un solo ticket" onClose={busy?()=>{}:onClose}/><DialogContent className="sale-modal-body">
+ {error&&<p role="alert" className="alert alert-danger">{error}</p>}
+ {!choice?<><Autocomplete value={null} inputValue={query} onInputChange={(_,value)=>setQuery(value)} options={matches} filterOptions={options=>options} getOptionLabel={c=>c.name} isOptionEqualToValue={(a,b)=>a.key===b.key} onChange={(_,c)=>{if(c)select(c);}} noOptionsText={query.trim()?'Sin coincidencias':'Escribe para buscar'} renderOption={(props,c)=>{const {key,...rest}=props;return <li key={key} {...rest}><div>{c.name}<small className="d-block text-muted">{c.context}</small></div></li>;}} renderInput={params=><TextField {...params} autoFocus label="Buscar producto o servicio" placeholder="Escribe para buscar"/>}/></>:<section className="sale-section border rounded p-3 my-2"><button className="btn btn-link float-end" onClick={clear}>Cambiar concepto</button><h3 className="h5">{choice.name}</h3><p>{choice.context}</p>
+ <label className="d-block">Tarifa<select className="form-select" value={tariffKey} onChange={e=>{setTariffKey(e.target.value);setValue('');setAddons([]);}}><option value="">Selecciona tarifa</option>{choice.tariffs.map(t=><option key={t.key} value={t.key}>{t.service?.priceMode==='custom'?'Importe personalizado':`${money(t.price)} / ${t.unit}`}</option>)}</select></label>
+ {!commercial&&<label>Captura<select className="form-select" value={mode} onChange={e=>{setMode(e.target.value);setValue('');}}><option value="quantity">Por cantidad</option><option value="amount">Por importe</option></select></label>}
+ <label className="d-block mt-2">{custom||mode==='amount'?'Importe en pesos':`Cantidad (${tariff?.unit||'unidad'})`}<input className="form-control" inputMode="decimal" value={value} onChange={e=>setValue(e.target.value)} placeholder="" /></label>
+ {!commercial&&mode==='amount'&&<label className="d-block">Cantidad física confirmada, si se requiere<input className="form-control" value={confirmed} onChange={e=>setConfirmed(e.target.value)} inputMode="decimal"/></label>}
+ {tariff?.service?.addons?.map(a=><label key={a.id} className="d-block my-2"><input type="checkbox" checked={addons.includes(a.id)} onChange={e=>setAddons(e.target.checked?[...addons,a.id]:addons.filter(id=>id!==a.id))}/> {a.name} +{money(a.price)} por {tariff.unit}</label>)}
+ {custom&&<label className="d-block">Concepto breve (opcional)<input className="form-control" maxLength={200} value={description} onChange={e=>setDescription(e.target.value)}/></label>}
+ <button disabled={!tariff||!value.trim()} className="btn btn-primary mt-2" onClick={add}>Agregar a la venta</button></section>}
+ <div className="table-responsive sale-items mt-3"><table className="table align-middle"><thead><tr><th>Concepto</th><th>Cantidad</th><th>Importe</th><th/></tr></thead><tbody>{lines.map(l=><tr key={l.id}><td>{l.name}{l.addons?.length>0&&<small className="d-block">{l.addons.map(a=>a.name).join(', ')}</small>}</td><td>{l.quantity} {l.unit}</td><td>{money(l.amount)}</td><td><button className="btn btn-sm btn-outline-danger" onClick={()=>{try{setLines(repriceLines(lines.filter(i=>i.id!==l.id)));}catch(e){setError(e.message);}}}>Quitar</button></td></tr>)}</tbody></table></div>
+ <label>Forma de pago<select className="form-select" value={payment} onChange={e=>setPayment(e.target.value)}>{['Efectivo','Transferencia','Tarjeta'].map(p=><option key={p}>{p}</option>)}</select></label>
+ </DialogContent><DialogActions className="sale-modal-actions"><div className="sale-footer-total"><span>Total</span><strong>{money(total(lines))}</strong></div><Button disabled={busy} onClick={onClose}>Cancelar</Button><Button variant="contained" disabled={busy||!!choice||!lines.length} onClick={save}>{busy?'Registrando…':'Registrar venta'}</Button></DialogActions></Dialog>;
+}

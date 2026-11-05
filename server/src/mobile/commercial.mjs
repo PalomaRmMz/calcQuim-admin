@@ -74,7 +74,7 @@ export function commercialChoices(data) {
   }
   for (const product of products)
     if (!covered.has(String(product.refId))) append(product);
-  return primary;
+  return [...primary,...all.filter(c=>['presentation','service'].includes(c.kind))];
 }
 export function searchCommercial(choices, query, usage = {}) {
   if (!normalizeText(query)) return [];

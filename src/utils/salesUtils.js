@@ -9,7 +9,7 @@ export function localDate() {
 export function calculateHistoricalItems(items) {
     const aggregate = calculateWholesaleItems(items);
     return aggregate.map((item) => {
-        if (item.pricingVersion === WHOLESALE_VERSION) return item;
+        if (item.commerceVersion || item.pricingVersion === WHOLESALE_VERSION) return item;
         if (item.pricingVersion === NORMAL_PRICING_VERSION) return calculateItems([item])[0];
         const isLiter = ["litro", "litros", "l"].includes(String(item.unit).trim().toLowerCase());
         if (item.entryMode === "amount") {
@@ -39,7 +39,7 @@ export const NORMAL_PRICING_VERSION = 'admin-sales-normal-v1';
 // Only newly captured drafts pass here. Stored receipts are never recalculated.
 export function calculateItems(items) {
     return calculateWholesaleItems(items).map(item => {
-        if (item.pricingVersion === WHOLESALE_VERSION) return item;
+        if (item.commerceVersion || item.pricingVersion === WHOLESALE_VERSION) return item;
         const amountCents = item.entryMode === 'amount'
             ? Math.round(Number(item.requestedAmount) * 100)
             : Math.round(Number(item.price) * Number(item.quantity) * 100);

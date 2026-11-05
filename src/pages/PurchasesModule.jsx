@@ -1,3 +1,4 @@
+import CleaningScope from '../components/CleaningScope.jsx';
 import { Link, Navigate, useParams } from "react-router";
 import { useProcurement } from "../context/ProcurementContext.js";
 import Feedback from "../components/Feedback";
@@ -16,6 +17,6 @@ export default function PurchasesModule() {
     if (!Panel) return <Navigate to="/compras" replace />;
     return <>
         <div className="d-flex justify-content-end mb-3"><ExportExcelButton scope="procurement" /></div>
-        {data ? <Panel key={section} /> : <><Feedback message={error} /><Link to="/administracion/datos">Datos y respaldos</Link></>}
+        {data ? <CleaningScope><Panel key={section} /></CleaningScope> : <><Feedback message={error} /><Link to="/administracion/datos">Datos y respaldos</Link></>}
     </>;
 }

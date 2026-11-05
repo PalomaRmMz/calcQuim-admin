@@ -25,22 +25,22 @@ test("navegación separa administración y operación manteniendo el proveedor c
         assert.deepEqual(tabs(purchases), []);
         assert.ok(purchases.includes("Exportar Excel"));
         assert.ok(!purchases.includes("Eliminar todos los datos"));
-        const administration = renderRoute("/compras/proveedores");
+        const administration = renderRoute("/proveedores");
         assert.deepEqual(tabs(administration), []);
         assert.ok(administration.includes("Nuevo proveedor"));
-        assert.match(administration, /class="sidebar-child active" href="\/compras\/proveedores"/);
-        assert.match(administration, /aria-label="Compras" aria-expanded="true"/);
+        assert.match(administration, /class="sidebar-item active"[^>]*href="\/proveedores"/);
+        assert.match(administration, /aria-label="Proveedores"/);
         for (const [path, expected] of [["/productos", "Lista de productos"], ["/productos/categorias", "Lista de categorías"], ["/productos/lineas", "Nueva línea"], ["/productos/grupos", "Grupos de precio"]]) {
             const html = renderRoute(path);
             assert.deepEqual(tabs(html), []);
             assert.ok(html.includes(expected), path);
-            assert.match(html, /aria-label="Productos" aria-expanded="true"/);
+            assert.match(html, /aria-label="Productos de limpieza" aria-expanded="true"/);
         }
         const router = createMemoryRouter([{ path: "*", element: React.createElement(Root) }], { initialEntries: ["/compras/abastecimiento"] });
         try {
             const renderRouter = () => renderToString(React.createElement(RouterProvider, { router }));
             assert.ok(renderRouter().includes("Abastecimiento por producto final"));
-            await router.navigate("/compras/comparador");
+            await router.navigate("/comparadores/limpieza");
             assert.ok(renderRouter().includes("Comparador de abastecimiento"));
             await router.navigate(-1);
             assert.equal(router.state.location.pathname, "/compras/abastecimiento");
@@ -62,7 +62,7 @@ test("navegación separa administración y operación manteniendo el proveedor c
         assert.equal(api.saveSupplier({ name: "Empresa administrativa", active: true }).ok, true);
         refresh();
         const supplierId = api.data.suppliers[0].id;
-        assert.ok(renderRoute("/compras/proveedores").includes("Empresa administrativa"));
+        assert.ok(renderRoute("/proveedores").includes("Empresa administrativa"));
         for (const name of ["PurchaseFormModal", "SupplyFormModal", "BatchSupplyModal"]) {
             const { default: Form } = await server.ssrLoadModule(`/src/components/${name}.jsx`);
             assert.ok(renderWithProviders(React.createElement(Form, { mode: "create" })).includes("Empresa administrativa"), name);
@@ -85,20 +85,20 @@ test("navegación separa administración y operación manteniendo el proveedor c
         const { default: PurchaseForm } = await server.ssrLoadModule("/src/components/PurchaseFormModal.jsx");
         const form = renderWithProviders(React.createElement(PurchaseForm));
         assert.ok(!form.includes(`<option value="${supplierId}">`));
-        assert.ok(form.includes("Compras &gt; Proveedores"));
+        assert.ok(form.includes("apartado Proveedores"));
         const { default: Sidebar } = await server.ssrLoadModule("/src/layout/Sidebar.jsx");
-        const collapsed = renderToString(React.createElement(MemoryRouter, { initialEntries: ["/compras/proveedores"] }, React.createElement(Sidebar, { collapsed: true, mobileMenuOpen: true })));
+        const collapsed = renderToString(React.createElement(MemoryRouter, { initialEntries: ["/proveedores"] }, React.createElement(Sidebar, { collapsed: true, mobileMenuOpen: true })));
         assert.ok(collapsed.includes("mobile-open") && !collapsed.includes("sidebar-collapsed"));
-        assert.match(collapsed, /aria-label="Compras" aria-expanded="true"/);
+        assert.match(collapsed, /aria-label="Proveedores"/);
         for (const mobileMenuOpen of [false, true]) {
-            for (const [path, label] of [["/productos/categorias", "Productos"], ["/compras/comparador", "Compras"], ["/compras/proveedores", "Compras"], ["/administracion/datos", "Administración"], ["/ventas", null]]) {
+            for (const [path, label] of [["/productos/categorias", "Productos de limpieza"], ["/comparadores/limpieza", "Comparadores"], ["/proveedores", null], ["/administracion/datos", "Administración"], ["/ventas", null]]) {
                 const html = renderToString(React.createElement(MemoryRouter, { initialEntries: [path] }, React.createElement(Sidebar, { mobileMenuOpen })));
                 assert.equal((html.match(/aria-expanded="true"/g) || []).length, label ? 1 : 0);
                 if (label) assert.ok(html.includes(`aria-label="${label}" aria-expanded="true"`));
             }
         }
-        const compact = renderToString(React.createElement(MemoryRouter, { initialEntries: ["/compras/comparador"] }, React.createElement(Sidebar, { collapsed: true })));
-        assert.match(compact, /aria-label="Compras" aria-expanded="false"/);
+        const compact = renderToString(React.createElement(MemoryRouter, { initialEntries: ["/comparadores/limpieza"] }, React.createElement(Sidebar, { collapsed: true })));
+        assert.match(compact, /aria-label="Comparadores" aria-expanded="false"/);
 
         for (const [name, props] of [
             ["ProductFormModal", { show: true }], ["CategoryFormModal", { show: true }],

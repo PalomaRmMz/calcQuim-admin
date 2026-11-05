@@ -5,7 +5,7 @@ export const UNITS = [
     { id: "mililitro", label: "mL", dimension: "volume", factor: 0.001, aliases: ["ml", "mililitros"] },
     { id: "kg", label: "kg", dimension: "mass", factor: 1, aliases: ["kilogramo", "kilogramos", "kilo", "kilos"] },
     { id: "gramo", label: "g", dimension: "mass", factor: 0.001, aliases: ["g", "gr", "gramos"] },
-    ...["pieza", "garrafa", "envase", "botella", "bolsa", "porron"].map((id) => ({ id, label: id === "porron" ? "porrón" : id, dimension: id, factor: 1, aliases: [id + "s", ...(id === "pieza" ? ["pza", "pzas", "unidad", "unidades"] : [])] })),
+    ...["carga", "servicio", "paquete", "pieza", "garrafa", "envase", "botella", "bolsa", "porron"].map((id) => ({ id, label: id === "porron" ? "porrón" : id, dimension: id, factor: 1, aliases: [id + "s", ...(id === "pieza" ? ["pza", "pzas", "unidad", "unidades"] : [])] })),
 ];
 export function normalizeUnit(value) {
     const text = normalizeText(String(value ?? ""));

@@ -6,7 +6,7 @@ import DataTable from './DataTable';
 import TableActions from './TableActions';
 import '../styles/components/Inventory.css';
 
-export default function InventoryProductList({rows,categories,productLines,onSelect}){
+export default function InventoryProductList({rows,categories,productLines,onSelect,activity='LIMPIEZA',presentations=[]}){
     // Mismo orden y configuración inicial que ProductsPage, sin agrupación visual.
     const products=rows.map(p=>({...p,id:p.productId})).sort((a,b)=>getProductDisplayName(a,categories,productLines).localeCompare(getProductDisplayName(b,categories,productLines),'es'));
     const category=p=>categories.find(c=>c.id===p.categoryId);
@@ -20,5 +20,8 @@ export default function InventoryProductList({rows,categories,productLines,onSel
         {id:'category',header:'Categoría',size:180,accessorFn:p=>category(p)?.name||'Sin categoría',Cell:({cell,row})=><span className="classification-label category-accent" style={categoryStyle(category(row.original))}>{cell.getValue()}</span>},
         {id:'line',header:'Línea',accessorFn:p=>productLines.find(l=>l.id===p.lineId)?.name||'---'},
     ];
-    return <DataTable columns={columns} data={products} getRowId={p=>String(p.productId)} columnOrder={['name','quantity','status','minimum','batch','actions','category','line']} columnVisibility={{line:false}} searchPlaceholder="Buscar producto..." initialSorting={[{id:'category',desc:false},{id:'line',desc:false}]}/>;
+    if(activity==='JARCERIA'){
+        columns.splice(6,2,{id:'presentations',header:'Presentaciones',accessorFn:p=>presentations.filter(r=>String(r.productId)===String(p.productId)&&r.active).map(r=>r.name+' ('+r.factor+' '+r.baseUnit+')').join(' · ')||'Sin presentaciones'});
+    }
+    return <DataTable columns={columns} data={products} getRowId={p=>String(p.productId)} columnOrder={['name','quantity','status','minimum','batch','actions',...(activity==='JARCERIA'?['presentations']:['category','line'])]} columnVisibility={{line:false}} searchPlaceholder="Buscar producto..." initialSorting={activity==='JARCERIA'?[{id:'name',desc:false}]:[{id:'category',desc:false},{id:'line',desc:false}]}/>;
 }

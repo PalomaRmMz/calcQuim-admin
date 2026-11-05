@@ -1,17 +1,11 @@
+import {adminNavigation} from '../domain/adminNavigation.mjs';
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBox, faCartShopping, faChartColumn, faGear, faChevronLeft, faChevronRight, faChevronDown } from "@fortawesome/free-solid-svg-icons";
 import "../styles/layout/Sidebar.css";
 
-const menuItems = [
-    { label: "Productos", icon: faBox, path: "/productos", children: [["Productos", "/productos"], ["Categorías", "/productos/categorias"], ["Líneas", "/productos/lineas"], ["Grupos de precio", "/productos/grupos"]] },
-    { label: "Ventas", icon: faCartShopping, path: "/ventas" },
-    { label: "Inventario", icon: faBox, path: "/inventario" },
-    { label: "Compras", icon: faCartShopping, path: "/compras", children: [["Historial", "/compras"], ["Abastecimiento", "/compras/abastecimiento"], ["Comparador", "/compras/comparador"], ["Proveedores", "/compras/proveedores"]] },
-    { label: "Administración", icon: faGear, path: "/administracion", children: [["Datos y respaldos", "/administracion/datos"]] },
-    { label: "Reportes", icon: faChartColumn, path: "/reportes" },
-];
+const menuItems=adminNavigation.map(item=>({...item,icon:({box:faBox,cart:faCartShopping,chart:faChartColumn,gear:faGear})[item.icon]}));
 
 export default function Sidebar({ collapsed, setCollapsed, mobileMenuOpen, setMobileMenuOpen, activeModule }) {
     const { pathname, key } = useLocation();

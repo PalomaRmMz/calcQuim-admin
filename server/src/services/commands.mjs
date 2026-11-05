@@ -1,3 +1,5 @@
+import {commerceCommands,saveCommerce,commercialImport,presentationPurchase} from './commerce.mjs';
+import {validatePresentation,validateService} from '../../../src/domain/commerce.mjs';
 import { createMobileSale, correctMobileSale } from '../mobile/domain.mjs';
 import { createCatalogActions } from '../../../src/services/catalogDomain.js';
 import { catalogCollectionError } from '../../../src/services/catalogValidation.js';
@@ -19,7 +21,7 @@ export class ApiError extends Error {
 }
 export const catalogCommands = ['addCategory','updateCategory','deleteCategory','addProductLine','updateProductLine','deleteProductLine','addPriceGroup','updatePriceGroup','deletePriceGroup','addProduct','updateProduct','deleteProduct','addProductsBatch','updateProductsBatch'];
 export const procurementCommands = ['savePurchasedItem','savePurchasedItemsBatch','saveSupplyYieldBatch','savePurchasedItemSetup','saveSupplySource','saveSupplyConversion','configureSupplyBatch','configureProductBatch','saveSources','saveSupplier','setSupplyActive','addSupplierPrice','deleteEntity','savePurchase','voidPurchase'];
-export const commandNames = [...catalogCommands,...procurementCommands,'createSale','createMobileSale','correctMobileSale','voidSale','configureWholesalePricing'];
+export const commandNames = [...commerceCommands,...catalogCommands,...procurementCommands,'createCommercialSale','createSale','createMobileSale','correctMobileSale','voidSale','configureWholesalePricing'];
 export function memoryStorage(data) {
   const values = {
     [STORAGE_KEYS.products]: data.products,[STORAGE_KEYS.categories]:data.categories,
@@ -39,13 +41,16 @@ export function validateDataset(data) {
     if (p.lineId != null && !data.productLines.some(l=>l.id===p.lineId && l.categoryId===p.categoryId)) throw new ApiError(422,'INVALID_RELATION','Línea inválida.');
     if (p.priceGroupId != null && !data.priceGroups.some(g=>g.id===p.priceGroupId)) throw new ApiError(422,'INVALID_RELATION','Grupo de precio inválido.');
   }
+  for(const p of data.procurement.presentations||[])validatePresentation(p,data.products);
+  for(const s of data.procurement.services||[])validateService(s);
+  for(const supplier of data.procurement.suppliers)if(supplier.businessActivity!=null&&!['LIMPIEZA','JARCERIA'].includes(supplier.businessActivity))throw new ApiError(422,'INVALID_SUPPLIER_ACTIVITY','Giro de proveedor inválido.');
   assertProcurementValid(data.procurement);
   // Los diagnósticos archivados no son relaciones que deban repararse.
   const issues = supply.supplyModelIssues({...data.procurement,supplyMigration:undefined}, data.products);
   if (issues.length) throw new ApiError(422,'INVALID_RELATION',issues[0]);
   validateSales(data.sales);
   for(const sale of data.sales)for(const item of sale.items) {
-    if(item.reference&&item.reference.kind!=='product') {
+    if(item.reference&& !['product','presentation','service'].includes(item.reference.kind)) {
       const collection=({line:'productLines',category:'categories',priceGroup:'priceGroups'})[item.reference.kind];
       if(!collection||!data[collection].some(row=>String(row.id)===String(item.reference.id)))throw new ApiError(422,'INVALID_RELATION','La agrupación tiene historial comercial; conserva su identificador.');
     }
@@ -55,6 +60,9 @@ export function validateDataset(data) {
 }
 export function executeCommand(data, counters, name, args) {
   if (!commandNames.includes(name) || !Array.isArray(args) || args.length>3) throw new ApiError(400,'INVALID_COMMAND','Operación no válida.');
+  if(['previewCommerceImport','importCommerceCatalog'].includes(name)){if(data.procurement.commerceSchema!==1)throw Error('Migración comercial pendiente.');const result=commercialImport(data,args[0],name==='previewCommerceImport');validateDataset(data);return result;}
+  if(name==='savePresentationPurchase'){const result=presentationPurchase(data,args[0],{products:data.products,categories:data.categories,productLines:data.productLines,priceGroups:data.priceGroups});validateDataset(data);return result;}
+  if(commerceCommands.includes(name)&&!['importCommerceCatalog','previewCommerceImport'].includes(name)){const result=saveCommerce(data,name,args[0]);counters.products=Math.max(counters.products??0,...data.products.map(p=>Number(p.id)));validateDataset(data);return result;}
   if (name==='configureWholesalePricing') {
     if (data.procurement.wholesalePricingSchema!==2) throw new ApiError(409,'WHOLESALE_SCHEMA_NOT_READY','Migración de mayoreo pendiente de autorización.');
     if (!AMOUNT_POLICIES.includes(args[0]?.amountPolicy)) throw new ApiError(422,'AMOUNT_POLICY_REQUIRED','Selecciona la política comercial de captura por importe.');
@@ -64,13 +72,13 @@ export function executeCommand(data, counters, name, args) {
   if (!wholesaleEnabled(data) && ['addProduct','updateProduct','addPriceGroup','updatePriceGroup','addProductsBatch','updateProductsBatch'].includes(name) && JSON.stringify(args).includes('"wholesalePrice"')) {
     throw new ApiError(409,'WHOLESALE_NOT_ACTIVATED','Mayoreo pendiente de migración y activación autorizada.');
   }
-  const catalog = {categories:data.categories,productLines:data.productLines,priceGroups:data.priceGroups,products:data.products};
+  const catalog = {procurement:data.procurement,categories:data.categories,productLines:data.productLines,priceGroups:data.priceGroups,products:data.products};
   const named = data.products.map(p=>({...p,displayName:getProductDisplayName(p,data.categories,data.productLines)}));
   let result={ok:true};
   if (catalogCommands.includes(name)) {
     const fields = {Category:'categories',ProductLine:'productLines',PriceGroup:'priceGroups',Product:'products'};
     const idCollection = Object.entries(fields).find(([suffix])=>name.includes(suffix))?.[1] ?? 'products';
-    const setters = Object.fromEntries(Object.keys(catalog).map(k=>[`set${k[0].toUpperCase()+k.slice(1)}`,fn=>{ data[k]=typeof fn==='function'?fn(data[k]):fn; }]));
+    const setters = Object.fromEntries(Object.keys(catalog).filter(k=>k!=='procurement').map(k=>[`set${k[0].toUpperCase()+k.slice(1)}`,fn=>{ data[k]=typeof fn==='function'?fn(data[k]):fn; }]));
     const actions = createCatalogActions(catalog,{...setters,productHasHistory:id=>productHasHistory(id,memoryStorage(data)),getNextId:items=>Math.max(counters[idCollection]??0,0,...items.map(i=>Number(i.id)))+1});
     result = actions[name](...args);
     if (!result.ok) throw new ApiError(422,'DOMAIN_VALIDATION',result.message);
@@ -95,6 +103,14 @@ export function executeCommand(data, counters, name, args) {
       case 'addSupplierPrice': p=procurement.addSupplierPrice(p,args[0],named); break;
       case 'deleteEntity': p=procurement.deleteEntity(p,...args); break;
       case 'savePurchase': {
+        if(args[0].activity&&args[0].activity!=='LIMPIEZA')throw new ApiError(422,'PURCHASE_ACTIVITY','Usa la captura por presentación para jarcería.');
+        if(args[1]==null)for(const item of args[0].items||[]){
+          const direct=data.products.find(product=>String(product.id)===String(item.directProductId));
+          const source=p.supplyItems.find(source=>source.id===item.supplyItemId);
+          const links=(p.supplyConversions||[]).filter(conversion=>conversion.purchasedItemId===source?.purchasedItemId);
+          if(direct?.activity==='JARCERIA'||links.length&&links.every(link=>data.products.some(product=>product.id===link.outputProductId&&product.activity==='JARCERIA')))throw new ApiError(422,'PURCHASE_ACTIVITY','Este artículo se compra desde Jarcería, con su contenido de presentación.');
+        }
+
         if (args[1] != null && !p.purchases.some(x=>x.id===args[1])) throw new ApiError(404,'NOT_FOUND','Compra no encontrada.');
         // Alta rápida usa el contador histórico para no reutilizar IDs eliminados.
         let nextId=Math.max(counters.products??0,0,...data.products.map(p=>p.id));
@@ -106,7 +122,8 @@ export function executeCommand(data, counters, name, args) {
         if (!p.purchases.some(x=>x.id===args[0]&&!x.voidedAt)) throw new ApiError(404,'NOT_FOUND','Compra no encontrada o anulada.');
         p=procurement.voidPurchase(p,args[0]); break;
       case 'correctMobileSale': data.sales=correctMobileSale(data.sales,args[0],args[1]); break;
-      case 'createMobileSale': data.sales=createMobileSale(data.sales,args[0],{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
+      case 'createCommercialSale': data.sales=createMobileSale(data.sales,{...args[0],origin:'WEB'},{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
+      case 'createMobileSale': data.sales=createMobileSale(data.sales,{...args[0],origin:'MOVIL'},{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
       case 'createSale': data.sales=createSale(data.sales,args[0],{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); break;
       case 'voidSale': data.sales=voidSale(data.sales,args[0]); break;
       default: throw new ApiError(400,'INVALID_COMMAND','Operación no disponible.');

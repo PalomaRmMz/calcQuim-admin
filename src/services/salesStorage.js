@@ -17,7 +17,7 @@ export function validateSales(sales) {
         if (sale.folio) folios.add(sale.folio);
         const products = new Set();
         for (const item of sale.items) {
-            if (!item || (item.productId == null && !(['line','category','priceGroup'].includes(item.reference?.kind) && item.reference?.id != null)) || products.has(item.id || String(item.productId)) || typeof item.name !== "string" || !normalizeUnit(item.unit) || !amount(item.price) || !Number.isFinite(item.quantity) || item.quantity <= 0 || !amount(item.amount)) throw new Error("Hay un renglón de venta inválido. Se conservó el historial original.");
+            if (!item || (item.productId == null && !(['line','category','priceGroup','service'].includes(item.reference?.kind) && item.reference?.id != null)) || products.has(item.id || String(item.productId)) || typeof item.name !== "string" || !normalizeUnit(item.unit) || !amount(item.price) || !Number.isFinite(item.quantity) || item.quantity <= 0 || !amount(item.amount)) throw new Error("Hay un renglón de venta inválido. Se conservó el historial original.");
             products.add(item.id || String(item.productId));
         }
         if (Math.abs(sale.total - sale.items.reduce((sum, i) => sum + i.amount, 0)) > 0.011) throw new Error("El total de una venta no coincide con sus renglones.");
@@ -67,7 +67,7 @@ export function createSale(sales, input, catalog, legacySequence = 0) {
         }).map(p=>p.id):null;
         const line = productLines.find(l => l.id === product.lineId);
         const category = categories.find(c => c.id === product.categoryId);
-        return { productId: product.id, name: getProductDisplayName(product, categories, productLines), productNameSnapshot: product.name, priceGroupIdSnapshot: product.priceGroupId ?? null, unit: normalizeUnit(product.unit), price, ...rates, ...(eligibleProductIds?{eligibleProductIds}:{}), quantity: item.quantity, confirmedQuantity:item.confirmedQuantity??null, entryMode: item.entryMode || "quantity", requestedAmount: item.entryMode === "amount" ? Number(item.requestedAmount) : null,
+        return { activity:product.activity??'LIMPIEZA', lineType:'physical', productId: product.id, name: getProductDisplayName(product, categories, productLines), productNameSnapshot: product.name, priceGroupIdSnapshot: product.priceGroupId ?? null, unit: normalizeUnit(product.unit), price, ...rates, ...(eligibleProductIds?{eligibleProductIds}:{}), quantity: item.quantity, confirmedQuantity:item.confirmedQuantity??null, entryMode: item.entryMode || "quantity", requestedAmount: item.entryMode === "amount" ? Number(item.requestedAmount) : null,
             group: line ? { id: `line-${line.id}`, name: line.name, colorId: line.id } : category ? { id: `category-${category.id}`, name: category.name, colorId: category.id } : { id: "unclassified", name: "Sin categoría" } };
     });
     const items = calculateItems(entries);

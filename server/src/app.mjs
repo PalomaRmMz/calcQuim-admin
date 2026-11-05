@@ -21,7 +21,7 @@ export function createApp(database, dataService = null, mode='synthetic') {
         if(req.get('X-CalcQuim-Mode')!==mode||(origin&&!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin))) return res.status(403).json({error:{code:mode==='synthetic'?'SANDBOX_HEADER_REQUIRED':'OPERATIONAL_HEADER_REQUIRED'}});
       }
       next();
-    },express.json({limit:'20mb'}),dataRouter(dataService));
+    },express.json({limit:'20mb'}),dataRouter(dataService,mode));
   }
   app.use((_req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));
   // Express requiere cuatro argumentos para reconocer el middleware de error.

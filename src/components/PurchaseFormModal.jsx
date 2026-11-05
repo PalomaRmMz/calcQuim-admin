@@ -22,7 +22,7 @@ import "../styles/components/SaleFormModal.css";
 
 const filter = createFilterOptions({ limit: 30, stringify: (p) => `${p.name} ${p.classification}` });
 
-export default function PurchaseFormModal({ purchase, onClose, onSave }) {
+export default function PurchaseFormModal({ purchase, onClose, onSave, activity=null }) {
     const { products: rawProducts, categories, productLines } = useCatalog();
     const [quickName, setQuickName] = useState(null);
     const [drafts, setDrafts] = useState([]);
@@ -58,7 +58,7 @@ export default function PurchaseFormModal({ purchase, onClose, onSave }) {
         if (!supplierId) return setError("Escribe el proveedor de esta compra.");
         if (!date || date > localDate()) return setError("Selecciona una fecha válida, no futura.");
         if (!items.length || calculated.some((item) => !item) || !Number.isFinite(total)) return setError("Agrega artículos con cantidad mayor que cero y un costo válido.");
-        const result = await onSave({ receipt, supplierId, date, reference: reference.trim(), notes: notes.trim(), items: sortedGroups.flatMap(({ items: entries, ...group }) => entries.map(({ index }) => ({ ...calculated[index], group }))), total });
+        const result = await onSave({ ...(!purchase&&activity?{activity}:{}), receipt, supplierId, date, reference: reference.trim(), notes: notes.trim(), items: sortedGroups.flatMap(({ items: entries, ...group }) => entries.map(({ index }) => ({ ...calculated[index], group }))), total });
         if (!result.ok) return setError(result.message);
         onClose();
     }
@@ -73,11 +73,11 @@ export default function PurchaseFormModal({ purchase, onClose, onSave }) {
             <DialogContent className="sale-modal-body">
                 <section className="sale-section">
                 <div className="row g-3 mb-3">
-                    <div className="col-12 col-sm-6"><FormLabel required className="form-label" htmlFor="purchaseSupplier">Proveedor</FormLabel><select autoFocus id="purchaseSupplier" required aria-required="true" className="form-select" value={supplierId} disabled={items.length > 0} onChange={(e) => setSupplierId(e.target.value)}><option value="">Selecciona proveedor</option>{data.suppliers.filter((s) => s.active || s.id === purchase?.supplierId).map((s) => <option key={s.id} value={s.id}>{s.name}{!s.active ? " (Inactivo)" : ""}</option>)}</select></div>
+                    <div className="col-12 col-sm-6"><FormLabel required className="form-label" htmlFor="purchaseSupplier">Proveedor</FormLabel><select autoFocus id="purchaseSupplier" required aria-required="true" className="form-select" value={supplierId} disabled={items.length > 0} onChange={(e) => setSupplierId(e.target.value)}><option value="">Selecciona proveedor</option>{data.suppliers.filter((s) => s.id===purchase?.supplierId||(s.active&&(!activity||s.businessActivity===activity))).map((s) => <option key={s.id} value={s.id}>{s.name}{!s.active ? " (Inactivo)" : ""}</option>)}</select></div>
                     <div className="col-12 col-sm-6"><FormLabel required className="form-label" htmlFor="purchaseDate">Fecha</FormLabel><input type="date" max={localDate()} id="purchaseDate" required aria-required="true" className="form-control" value={date} onChange={(e) => setDate(e.target.value)} /></div>
                 </div>
                 <p className="form-text">Puedes comprar artículos sin producto final ni costo informado previo.</p>{items.length > 0 && <p className="form-text">Para cambiar de proveedor retira primero los artículos.</p>}
-                {!data.suppliers.some(s => s.active) && <p role="status" className="alert alert-info">No hay proveedores activos disponibles. Agrega o activa proveedores desde Compras &gt; Proveedores.</p>}
+                {!data.suppliers.some(s => s.active&&(!activity||s.businessActivity===activity)) && <p role="status" className="alert alert-info">No hay proveedores activos disponibles para esta actividad. Agrega, clasifica o activa proveedores desde el apartado Proveedores.</p>}
                 <Autocomplete disabled={!supplierId} options={options} value={null} inputValue={search} onInputChange={(_, value) => setSearch(value)} getOptionLabel={(p) => p.name} getOptionKey={(p) => p.id} groupBy={option => option.requiresSource ? 'Configurar con este proveedor' : 'Disponibles para comprar'} renderOption={({ key, ...props }, p) => <li key={key} {...props}><div className="w-100"><div className="d-flex align-items-center justify-content-between gap-3"><span>{p.choiceLabel || p.name}</span>{p.requiresSource && <small className="text-primary text-nowrap">Configurar proveedor</small>}</div><small className="d-block text-muted">{p.requiresSource ? 'Artículo existente · Vincular al proveedor seleccionado' : `${supplyPresentation(p)} · ${SOURCING_TYPES[p.sourcingType]}`}</small></div></li>} filterOptions={(opts, state) => state.inputValue.trim() ? filter(opts, state) : []} noOptionsText={search.trim() ? <div>No encontramos &quot;{search}&quot;.<Button onMouseDown={e => e.preventDefault()} onClick={() => setQuickName(search)}>+ Crear producto</Button></div> : "Escribe para buscar"} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} onChange={(_, supply) => { if (supply?.requiresSource) { setEditingSource({ purchasedItemId: supply.purchasedItemId }); return; } if (supply) setItems((current) => [...current, { ...(data.supplyModelVersion === 2 && supply.directProductId == null ? sourceSnapshot(data, supply, products) : supplySnapshot(supply, productMap.get(supply.outputProductId))), id: crypto.randomUUID(), directProductId: supply.directProductId, newProduct: drafts.find(p => p.id === supply.directProductId), quantity: "", costMode: "total", cost: "" }]); setSearch(""); }} renderInput={(params) => <TextField {...params} size="small" label="Agregar artículo comprado" placeholder="Busca por artículo o presentación" />} />
                 <p className="text-muted small mt-2">Captura la cantidad y el costo total o unitario de cada artículo.</p>
                 {supplierId && !items.length && !existingSupplies.some(s => s.active) && <p className="alert alert-info">Busca un producto terminado o créalo aquí. Las bases y concentrados se configuran como artículos transformables en Abastecimiento.</p>}

@@ -8,7 +8,7 @@ import { startServer } from '../server/src/runtime.mjs';
 import { createDatabase } from '../server/src/db/pool.mjs';
 import { createDatasetService } from '../server/src/services/dataset.mjs';
 import { startOperationalMobile } from './operational-mobile.mjs';
-import { waitForDatabase,optionalMobile } from './startup-readiness.mjs';
+import { waitForDatabase,waitForFrontend,optionalMobile } from './startup-readiness.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const directory=new URL('../server/artifacts/launcher/',import.meta.url);
@@ -94,7 +94,13 @@ try{
     if(!await listening(5173)){
       const child=spawn(process.execPath,[fileURLToPath(new URL('./local-frontend.mjs',import.meta.url))],{cwd:root,windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
       const exited=new Promise(resolve=>child.once('exit',resolve));
-      vite={async close(){if(child.connected)child.send('stop');await exited;}};
+      vite={async close(){
+        let timer;
+        try{
+          if(child.connected)child.send('stop');
+          await Promise.race([exited,new Promise(resolve=>{timer=setTimeout(()=>{child.kill();resolve(exited);},10000);timer.unref();})]);
+        }finally{clearTimeout(timer);}
+      }};
       await new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>reject(new Error('REACT_MISMATCH')),60000);
         const fail=()=>{clearTimeout(timer);reject(new Error('REACT_MISMATCH'));};
@@ -102,9 +108,11 @@ try{
         child.once('message',message=>{clearTimeout(timer);message.ready?resolve():reject(new Error('REACT_MISMATCH'));});
       });
     }
-    const main=await(await request('http://127.0.0.1:5173/src/main.jsx')).text();
-    const proxy=await request('http://127.0.0.1:5173/api/v1/dataset');const proxied=await proxy.json();
-    if(!/CALCQUIM_OPERATIONAL["']?\s*:\s*true/.test(main)||!proxy.ok||proxied.generation!==snapshot.generation)throw new Error('REACT_MISMATCH');
+    await waitForFrontend(async()=>{
+      const main=await(await request('http://127.0.0.1:5173/src/main.jsx')).text();
+      const proxy=await request('http://127.0.0.1:5173/api/v1/dataset');const proxied=await proxy.json();
+      if(!/CALCQUIM_OPERATIONAL["']?\s*:\s*true/.test(main)||!proxy.ok||proxied.generation!==snapshot.generation)throw new Error('REACT_MISMATCH');
+    });
     await mkdir(directory,{recursive:true});
     await writeFile(stateFile,JSON.stringify({pid:process.pid,token,startedAt:new Date().toISOString()}),{mode:0o600});ready=true;
     process.on('SIGINT',()=>close());process.on('SIGTERM',()=>close());

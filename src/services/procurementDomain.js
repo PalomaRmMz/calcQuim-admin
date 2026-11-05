@@ -1,3 +1,4 @@
+import {SUPPLIER_ACTIVITIES,assertSupplierActivity} from '../domain/activityScope.mjs';
 import { receiptValid } from './purchaseReceipt.js';
 import { normalizeText } from "../utils/catalogUtils.js";
 import { normalizeUnit, convertQuantity } from "../utils/units.js";
@@ -16,10 +17,12 @@ export function saveSupplier(data, input) {
     if (data.suppliers.some(s => s.id !== input.id && nameKey(s.name) === nameKey(input.name))) fail("Ya existe un proveedor con ese nombre, incluso si está inactivo.");
     const old = data.suppliers.find((s) => s.id === input.id);
     if (input.id && !old) fail("El proveedor ya no existe.");
+    const businessActivity=input.businessActivity??old?.businessActivity??null;
+    if(businessActivity!=null&&!SUPPLIER_ACTIVITIES.includes(businessActivity))fail('Selecciona un giro válido del proveedor.');
     const address = (input.address ?? old?.address ?? "").trim();
     const mapsUrl = (input.mapsUrl ?? old?.mapsUrl ?? "").trim();
     if (mapsUrl && !validLocationUrl(mapsUrl)) fail("Escribe una URL de ubicación válida que comience con http:// o https://.");
-    const supplier = { id: old?.id || id(), name: input.name.trim(), active: input.active !== false, phone: input.phone?.trim() || "", address, mapsUrl, notes: input.notes?.trim() || "", createdAt: old?.createdAt || stamp(), updatedAt: stamp() };
+    const supplier = { ...old,businessActivity,businessActivityHistory:[...(old?.businessActivityHistory||[]),...(old&&businessActivity!==old.businessActivity?[{at:stamp(),previous:old.businessActivity??null,next:businessActivity}]:[])], id: old?.id || id(), name: input.name.trim(), active: input.active??old?.active??true, phone: (input.phone??old?.phone??'').trim(), address, mapsUrl, notes: (input.notes??old?.notes??'').trim(), createdAt: old?.createdAt || stamp(), updatedAt: stamp() };
     return { ...data, suppliers: old ? data.suppliers.map((s) => s.id === old.id ? supplier : s) : [...data.suppliers, supplier] };
 }
 export function saveSupply(data, input, products, initialCost = null) {
@@ -70,11 +73,14 @@ export function deleteEntity(data, collection, entityId) {
 }
 export function savePurchase(data, input, products, purchaseId) {
     const old = data.purchases.find((p) => p.id === purchaseId);
+    if(old?.items.some(i=>i.commercialPurchase))fail('Esta compra conserva contenido por presentación. Anúlala y registra la corrección desde Compras; revisa antes su recepción física.');
     const receipt = Object.hasOwn(input, 'receipt') ? input.receipt : old?.receipt;
     if (!receiptValid(receipt)) fail('La foto del ticket no es válida o supera el tamaño permitido.');
     if (purchaseId && (!old || old.voidedAt)) fail("La compra no existe o está anulada.");
     const supplier = data.suppliers.find((s) => s.id === input.supplierId);
     if (!supplier || (!supplier.active && supplier.id !== old?.supplierId)) fail("Selecciona un proveedor activo.");
+    if(!old){const hardware=input.activity==='JARCERIA';assertSupplierActivity(supplier,hardware?'JARCERIA':'LIMPIEZA',{allowLegacyUnclassified:!input.activity});}
+    if(old&&input.activity&&old.activity&&input.activity!==old.activity)fail('Conserva la actividad histórica de la compra.');
     if (!validDate(input.date) || input.date > localDate()) fail("Selecciona una fecha válida, no futura.");
     if (!input.items.length) fail("Agrega al menos un producto o insumo.");
     const itemIds = input.items.map(item => item.id).filter(value => value != null);
@@ -119,12 +125,12 @@ export function savePurchase(data, input, products, purchaseId) {
         const calculated = calculatePurchaseItem({ ...snapshot, id: previous?.id || id(), group: previous?.group || entry.group || null, quantity, costMode: entry.costMode, cost });
         if (!calculated || !["unit", "total"].includes(entry.costMode)) fail("Revisa las cantidades y costos de todos los productos.");
         const effective = calculateEffectiveCost({ price: calculated.total, priceQuantity: calculated.quantity, priceUnit: calculated.unit, yield: calculated.yield, targetUnit: calculated.productUnitSnapshot || calculated.yield?.outputUnit });
-        return { ...calculated, effectiveCost: effective.cost, effectiveUnit: effective.outputUnit || null };
+        return { ...calculated,...(previous?.commercialPurchase?{commercialPurchase:previous.commercialPurchase,productId:previous.productId}:{}), effectiveCost: effective.cost, effectiveUnit: effective.outputUnit || null };
     });
     const total = Math.round(items.reduce((sum, item) => sum + item.total, 0) * 100) / 100;
     if (!Number.isFinite(total)) fail("El total está fuera de rango.");
     const { revisions: oldRevisions = [], ...oldSnapshot } = old || {};
-    const purchase = { ...old, ...(receipt !== undefined ? { receipt } : {}), id: old?.id || id(), supplierId: supplier.id, supplier: old?.supplierId === supplier.id ? old.supplier : supplier.name, supplierNameSnapshot: old?.supplierId === supplier.id ? old.supplierNameSnapshot : supplier.name, date: input.date, reference: input.reference?.trim() || "", notes: input.notes?.trim() || "", items, total, createdAt: old?.createdAt || stamp(), updatedAt: stamp(), revisions: old ? [...oldRevisions, oldSnapshot] : [] };
+    const purchase = { ...old,...(!old&&input.activity?{activity:input.activity}:{}), ...(receipt !== undefined ? { receipt } : {}), id: old?.id || id(), supplierId: supplier.id, supplier: old?.supplierId === supplier.id ? old.supplier : supplier.name, supplierNameSnapshot: old?.supplierId === supplier.id ? old.supplierNameSnapshot : supplier.name, date: input.date, reference: input.reference?.trim() || "", notes: input.notes?.trim() || "", items, total, createdAt: old?.createdAt || stamp(), updatedAt: stamp(), revisions: old ? [...oldRevisions, oldSnapshot] : [] };
     return { ...data, supplyItems: supplies, purchases: old ? data.purchases.map((p) => p.id === old.id ? purchase : p) : [purchase, ...data.purchases] };
 }
 export function voidPurchase(data, purchaseId) {

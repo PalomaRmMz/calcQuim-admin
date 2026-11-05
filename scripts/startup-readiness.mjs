@@ -16,3 +16,17 @@ export async function optionalMobile(start,onFailure) {
   try { return await start(); }
   catch(error){await onFailure(error);return null;}
 }
+
+// Vite may accept HTTP before its first module transformation finishes.
+// Retry transport failures only; a wrong environment or dataset must still fail.
+export async function waitForFrontend(check,{timeoutMs=60000,intervalMs=500,now=Date.now,sleep=delay}={}) {
+  const deadline=now()+timeoutMs;
+  for(;;){
+    try{return await check();}
+    catch(error){
+      const transient=['AbortError','TimeoutError'].includes(error.name)||['ECONNREFUSED','ECONNRESET','ETIMEDOUT','UND_ERR_CONNECT_TIMEOUT'].includes(error.cause?.code||error.code);
+      if(!transient||now()>=deadline)throw error;
+      await sleep(intervalMs);
+    }
+  }
+}

@@ -1,3 +1,10 @@
+import HardwareProductsPage from './pages/HardwareProductsPage.jsx';
+import HardwareComparatorPage from './pages/HardwareComparatorPage.jsx';
+import LaundryPage from './pages/LaundryPage.jsx';
+import SuppliersPanel from './pages/SuppliersPanel.jsx';
+import ProcurementComparator from './pages/ProcurementComparator.jsx';
+import CleaningScope from './components/CleaningScope.jsx';
+import CommercePage from './pages/CommercePage.jsx';
 import { useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router";
 import Sidebar from "./layout/Sidebar";
@@ -43,7 +50,18 @@ function App() {
 
       <main className={`main-content ${sidebarCollapsed ? "main-content-expanded" : ""}`}>
         <Routes>
-          <Route path="/inventario" element={<><Header title="Inventario aproximado" subtitle="Existencias, movimientos y reposición" onOpenMenu={() => setMobileMenuOpen(true)} /><InventoryPage/></>} />
+          {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/comercial" element={<Navigate to="/reportes/comerciales" replace/>}/>}
+          {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/reportes/comerciales" element={<CommercePage reportOnly/>}/>}
+          <Route path="/proveedores" element={<SuppliersPanel/>}/>
+          <Route path="/productos-jarceria" element={<HardwareProductsPage/>}/>
+          <Route path="/lavanderia" element={<LaundryPage/>}/>
+          <Route path="/comparadores/limpieza" element={<CleaningScope><ProcurementComparator/></CleaningScope>}/>
+          <Route path="/comparadores/jarceria" element={<HardwareComparatorPage/>}/>
+          <Route path="/inventarios/limpieza" element={<InventoryPage key="cleaning" activity="LIMPIEZA"/>}/>
+          <Route path="/inventarios/jarceria" element={<InventoryPage key="hardware" activity="JARCERIA"/>}/>
+          <Route path="/compras/proveedores" element={<Navigate to="/proveedores" replace/>}/>
+          <Route path="/compras/comparador" element={<Navigate to="/comparadores/limpieza" replace/>}/>
+          <Route path="/inventario" element={<><Header title="Inventario aproximado" subtitle="Existencias, movimientos y reposición" onOpenMenu={() => setMobileMenuOpen(true)} /><InventoryPage key="legacy-cleaning" activity="LIMPIEZA"/></>} />
           <Route path="/" element={<Navigate to="/productos" replace />} />
           <Route path="/compras/:section?" element={<><Header title={sectionTitles[pathname] || 'Compras'} subtitle="Compras · Historial, abastecimiento y proveedores" onOpenMenu={() => setMobileMenuOpen(true)} /><PurchasesModule /></>} />
           <Route path="/compras/historial" element={<Navigate to="/compras" replace />} />
@@ -57,11 +75,11 @@ function App() {
             element={
               <>
                 <Header
-                  title={sectionTitles[pathname] || 'Productos'}
+                  title={sectionTitles[pathname] || 'Productos de limpieza'}
                   subtitle="Administra tu catálogo de CalcQuim"
                   onOpenMenu={() => setMobileMenuOpen(true)}
                 />
-                <ProductsModule />
+                <CleaningScope><ProductsModule /></CleaningScope>
               </>
             }
           />

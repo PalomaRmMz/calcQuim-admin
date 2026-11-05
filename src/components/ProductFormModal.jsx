@@ -151,7 +151,7 @@ function ProductFormModal({
                                         onChange={(event) => setUnit(event.target.value)}
                                     >
                                         {!normalizeUnit(unit) && <option value={unit}>{unit}</option>}
-                                        {UNITS.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+                                        {UNITS.filter(entry=>!['carga','servicio'].includes(entry.id)).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
                                     </select>
                                 </div>
                                 </div>

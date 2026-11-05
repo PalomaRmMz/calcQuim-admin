@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "vite";
 import React from "react";
+import {MemoryRouter} from "react-router";
 import { renderToString } from "react-dom/server";
 import { ThemeProvider, createTheme } from "@mui/material";
 import { procurementAnalytics } from "../src/utils/purchaseAnalytics.js";
@@ -23,7 +24,7 @@ test("las páginas y paneles renderizan con datos migrados y costos configurados
         const procurement = { data, analytics: procurementAnalytics(data, products), error: "" };
         for (const [file, expected] of [["PurchasesPage", "Historial de compras"], ["ProductsPage", "Mejor costo efectivo conocido"], ["CategoriesPage", "Lista de categorías"], ["SalesPage", "Historial de ventas"], ["SuppliersPanel", "Proveedor prueba"], ["SupplyItemsPanel", "Abastecimiento por producto final"], ["ProcurementComparator", "Comparador de abastecimiento"]]) {
             const { default: Component } = await server.ssrLoadModule(`/src/pages/${file}.jsx`);
-            const html = renderToString(React.createElement(CatalogContext.Provider, { value: catalog }, React.createElement(ProcurementContext.Provider, { value: procurement }, React.createElement(Component))));
+            const html = renderToString(React.createElement(CatalogContext.Provider, { value: catalog }, React.createElement(ProcurementContext.Provider, { value: procurement }, React.createElement(MemoryRouter,null,React.createElement(Component)))));
             assert.ok(html.includes(expected), `${file}: falta contenido esperado`);
             assert.ok(!/cotizaci[oó]n|cotizado/i.test(html), `${file}: terminología anterior`);
             assert.ok(!html.includes("NaN"), `${file}: resultado inválido`);
@@ -32,7 +33,7 @@ test("las páginas y paneles renderizan con datos migrados y costos configurados
         const coloredContext = { ...procurement, analytics: procurementAnalytics(data, classified.products) };
         for (const file of ["ProductsPage", "SupplyItemsPanel", "ProcurementComparator"]) {
             const { default: Component } = await server.ssrLoadModule(`/src/pages/${file}.jsx`);
-            const html = renderToString(React.createElement(CatalogContext.Provider, { value: classified }, React.createElement(ProcurementContext.Provider, { value: coloredContext }, React.createElement(Component))));
+            const html = renderToString(React.createElement(CatalogContext.Provider, { value: classified }, React.createElement(ProcurementContext.Provider, { value: coloredContext }, React.createElement(MemoryRouter,null,React.createElement(Component)))));
             assert.ok(!html.includes('background-color:hsl('), `${file}: clasificación sin colores semánticos arbitrarios`);
             assert.ok(html.includes("Fabulosos"));
             if (file === "SupplyItemsPanel") for (const text of ["Configurar productos terminados por lote", "Por producto final", "Por artículo comprado"]) assert.ok(html.includes(text));

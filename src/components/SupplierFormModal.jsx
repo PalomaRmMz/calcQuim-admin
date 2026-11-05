@@ -6,11 +6,12 @@ import { useProcurement } from "../context/ProcurementContext.js";
 
 export default function SupplierFormModal({ supplier, onClose }) {
     const { saveSupplier } = useProcurement();
-    const [form, setForm] = useState({ name: "", phone: "", address: "", mapsUrl: "", notes: "", active: true, ...supplier });
+    const [form, setForm] = useState({ name: "", phone: "", address: "", mapsUrl: "", notes: "", active: true, businessActivity:'', ...supplier });
     const [error, setError] = useState("");
     const change = (key) => (event) => setForm({ ...form, [key]: event.target.value });
-    async function submit(event) { event.preventDefault(); const result = await saveSupplier(form); if (!result.ok) setError(result.message); else onClose(); }
+    async function submit(event) { event.preventDefault(); if(!['LIMPIEZA','JARCERIA'].includes(form.businessActivity)){setError('Selecciona el giro del proveedor.');return;} const result = await saveSupplier(form); if (!result.ok) setError(result.message); else onClose(); }
     return <AppModal submitLabel={supplier ? "Guardar cambios" : "Crear proveedor"} title={supplier ? "Editar proveedor" : "Nuevo proveedor"} subtitle={supplier ? "Sus datos históricos se conservan al editarlo." : undefined} onClose={onClose} onSubmit={submit}>
+        <label className="d-block mb-3">Giro del proveedor<select required className="form-select" value={form.businessActivity||''} onChange={change('businessActivity')}><option value="">Pendiente de clasificación</option><option value="LIMPIEZA">Productos de limpieza</option><option value="JARCERIA">Jarcería</option></select></label>
         <div className="form-grid"><Field label="Nombre" required autoFocus maxLength={150} value={form.name} onChange={change("name")} /><Field label="Teléfono (opcional)" type="tel" maxLength={40} value={form.phone} onChange={change("phone")} /></div>
         <div className="form-grid"><Field label="Dirección (opcional)" value={form.address} onChange={change("address")} /><Field label="Google Maps (opcional)" type="url" placeholder="https://maps.app.goo.gl/..." value={form.mapsUrl} onChange={change("mapsUrl")} /></div>
         <label className="form-label" htmlFor="supplierNotes">Notas</label><textarea id="supplierNotes" className="form-control" rows={3} maxLength={1000} value={form.notes} onChange={change('notes')} />

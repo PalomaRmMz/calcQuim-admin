@@ -1,3 +1,4 @@
+import {productActivity,SUPPLIER_ACTIVITIES} from '../../../src/domain/activityScope.mjs';
 import { randomUUID,createHash } from 'node:crypto';
 import { ApiError } from './commands.mjs';
 import { normalizeUnit } from '../../../src/utils/units.js';
@@ -9,6 +10,9 @@ import { validDate } from '../../../src/utils/procurementUtils.js';
 // Repeating fractions require explicit confirmation; no inventory rounding.
 export function exactSaleQuantity(item, product, origin) {
   try {
+    if(item.lineType==='service')return null;
+    if(item.presentationSnapshot)return inventoryConvert(item.baseQuantity,item.baseUnit,product.unit);
+    if(product.activity==='JARCERIA'&&item.entryMode==='amount')return null;
     if(item.entryMode!=='amount')return inventoryConvert(item.quantity,item.unit,product.unit);
     let n,d;
     if(item.quantityNumerator&&item.quantityDenominator){n=BigInt(item.quantityNumerator);d=BigInt(item.quantityDenominator);}
@@ -25,7 +29,7 @@ export function exactSaleQuantity(item, product, origin) {
   }catch{return null;}
 }
 
-export const inventoryCommands=['inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase','resolveSaleBreakdowns'];
+export const inventoryCommands=['inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase','receivePresentationPurchase','resolveSaleBreakdowns'];
 const fail=(message,code='INVENTORY_VALIDATION')=>{throw new ApiError(422,code,message);};
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const findProduct=(data,id)=>{const p=data.products.find(p=>String(p.id)===String(id));if(!p)fail('Selecciona un producto existente.');return p;};
@@ -75,7 +79,24 @@ export async function executeInventoryCommand(c,data,name,args){
   if(!await inventoryAvailable(c))throw new ApiError(503,'INVENTORY_NOT_ENABLED','Inventario pendiente de migración autorizada.');
   if(!Array.isArray(args)||args.length!==1||!args[0]||typeof args[0]!=='object'||Array.isArray(args[0]))fail('Se requiere un formulario de inventario.');
   const input=args[0];
+  if(input.activity){
+    if(!SUPPLIER_ACTIVITIES.includes(input.activity))fail('Actividad de inventario inválida.');
+    const ids=[input.productId,...(input.allocations||[]).map(a=>a.productId),...(input.rows||[]).flatMap(r=>(r.allocations||[]).map(a=>a.productId))].filter(id=>id!=null);
+    if(name==='receivePresentationPurchase'){const p=data.procurement.purchases.find(p=>p.id===input.purchaseId);if(p?.items[input.ordinal]?.productId!=null)ids.push(p.items[input.ordinal].productId);}
+    if(name==='inventoryReverse'){const original=(await c.query('SELECT product_id FROM inventory_movements WHERE id=$1',[uuid(input.movementId)])).rows[0];if(original)ids.push(original.product_id);}
+    for(const id of ids)if(productActivity(findProduct(data,id))!==input.activity)fail('El artículo no pertenece a esta vista de inventario.');
+  }
+
+  if(name==='receivePresentationPurchase'){
+    const purchase=data.procurement.purchases.find(p=>p.id===input.purchaseId&&!p.voidedAt),item=purchase?.items[input.ordinal],physical=item?.commercialPurchase;
+    if(!physical)fail('Compra por presentación no disponible.');
+    const account=(await readInventory(c,data)).products.find(p=>String(p.productId)===String(item.productId));
+    if(!account?.initialMovementId)fail('Registra primero el inventario inicial del artículo.','INITIAL_REQUIRED');
+    if((await c.query("SELECT 1 FROM inventory_movements WHERE purchase_id=$1 AND reference->>'purchaseOrdinal'=$2 AND kind='receipt'",[purchase.id,String(input.ordinal)])).rowCount)fail('Esta recepción ya fue confirmada.');
+    return movement(c,data,{productId:item.productId,quantity:String(physical.baseQuantity),unit:physical.baseUnit,kind:'receipt',purchaseId:purchase.id,purchaseOrdinal:input.ordinal,reasonCode:'finished_receipt',reason:'Recepción de compra confirmada',reference:{presentation:physical}},'receipt');
+  }
   if(name==='resolveSaleBreakdowns'){
+
     const sale=data.sales.find(s=>String(s.id)===String(input.saleId));
     if(!sale||sale.voidedAt)fail('Selecciona una venta vigente.');
     if(!Array.isArray(input.rows)||!input.rows.length||input.rows.length>200)fail('Selecciona al menos un renglón para completar.');
@@ -194,7 +215,8 @@ export async function syncInventory(c,before,data,name,args){
     }
     await c.query("UPDATE inventory_pending SET state='cancelled' WHERE sale_id=$1 AND state IN ('pending','resolved')",[sale.id]);
     for(const [ordinal,item] of sale.items.entries()) {
-      if(item.reference.kind!=='product'||!exactSaleQuantity(item,findProduct(data,item.productId),sale.origin))await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});
+      if(item.lineType==='service')continue;
+      if(!['product','presentation'].includes(item.reference.kind)||!exactSaleQuantity(item,findProduct(data,item.productId),sale.origin))await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});
       else {
         const product=findProduct(data,item.productId);
         const baseline=await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
@@ -204,12 +226,13 @@ export async function syncInventory(c,before,data,name,args){
     }
     await inventoryChange(c,'commercial_correction',{saleId:sale.id,version:sale.commercialVersion,channel:'WEB',reason:args[1].reason});
   }
-  if(name==='createSale'||name==='createMobileSale'){
+  if(name==='createSale'||name==='createMobileSale'||name==='createCommercialSale'){
     const sale=data.sales.find(s=>!before.sales.some(old=>old.id===s.id));if(!sale)return;
     const intents=args[0].inventory??{};
     if(typeof intents!=='object'||Array.isArray(intents)||Object.entries(intents).some(([id,intent])=>!sale.items.some(i=>String(i.productId)===id)||!intent||typeof intent!=='object'||typeof intent.pendingGroup!=='boolean'))fail('La intención de inventario debe referir a renglones de la venta.');
     for(const [ordinal,item]of sale.items.entries()){
-      if(item.reference&&item.reference.kind!=='product'){
+      if(item.lineType==='service')continue;
+      if(item.reference&&!['product','presentation'].includes(item.reference.kind)){
         await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});continue;
       }
       const product=findProduct(data,item.productId),intent=intents[String(item.productId)]??{};
@@ -228,7 +251,7 @@ export async function syncInventory(c,before,data,name,args){
   }
   if(name==='voidSale'){
     const sale=data.sales.find(s=>String(s.id)===String(args[0]));
-    if(!['returned','not_returned'].includes(args[1]?.inventoryReturn))fail('Confirma si el producto no salió o regresó físicamente, o si permanece fuera.','PHYSICAL_RETURN_REQUIRED');
+    if(sale.items.some(i=>i.lineType!=='service')&&!['returned','not_returned'].includes(args[1]?.inventoryReturn))fail('Confirma si el producto no salió o regresó físicamente, o si permanece fuera.','PHYSICAL_RETURN_REQUIRED');
     const why=reason(args[1]??{},'sale_void');
     await c.query("UPDATE inventory_pending SET state='cancelled' WHERE sale_id=$1 AND state IN ('pending','resolved')",[String(sale.id)]);
     if(args[1].inventoryReturn==='returned'){
