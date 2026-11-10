@@ -1,3 +1,7 @@
+import {saveSupplierPurchaseTiers} from '../../../src/domain/supplierPurchaseTiers.mjs';
+import {presentationPurchaseCost} from '../../../src/domain/purchaseCost.mjs';
+import {normalizeText} from '../../../src/utils/catalogUtils.js';
+import {hardwareCategory,saveHardwareCategory,deleteHardwareCategory,validateHardwareName} from '../../../src/domain/hardwareCatalog.mjs';
 import {assertSupplierActivity} from '../../../src/domain/activityScope.mjs';
 import {createHash} from 'node:crypto';
 import {referenceCommerce} from '../../../src/domain/referenceCommerce.mjs';
@@ -5,9 +9,19 @@ import {prepareFinishedPurchase} from '../../../src/services/finishedProductFlow
 import {baseQuantity,decimal} from '../../../src/domain/commerce.mjs';
 import {randomUUID} from 'node:crypto';
 import {validatePresentation,validateService,sameId} from '../../../src/domain/commerce.mjs';
-export const commerceCommands=['saveHardwareProductBundle','savePresentation','saveService','saveCommerceProduct','savePresentationPurchase','previewCommerceImport','importCommerceCatalog'];
+export const commerceCommands=['saveSupplierPurchaseTiers','saveHardwareCategory','deleteHardwareCategory','saveHardwareProductsBatch','saveHardwareProductBundle','savePresentation','saveService','saveCommerceProduct','savePresentationPurchase','previewCommerceImport','importCommerceCatalog'];
 export function saveCommerce(data,name,input){
  if(data.procurement.commerceSchema!==1)throw new Error('Migración comercial pendiente.');
+ if(name==='saveSupplierPurchaseTiers')return saveSupplierPurchaseTiers(data,input);
+ if(name==='saveHardwareCategory')return saveHardwareCategory(data,input);
+ if(name==='deleteHardwareCategory')return deleteHardwareCategory(data,input);
+ if(name==='saveHardwareProductsBatch'){
+   if(!Array.isArray(input.rows)||!input.rows.length||input.rows.length>100)throw Error('Captura entre 1 y 100 productos.');
+   const next=structuredClone(data),errors=[];
+   input.rows.forEach((row,index)=>{try{if(row.product?.id||row.presentations?.some(p=>p.id))throw Error('El alta por lote solo admite productos nuevos.');saveCommerce(next,'saveHardwareProductBundle',row);}catch(e){errors.push(`Renglón ${index+1}: ${e.message}`);}});
+   if(errors.length)throw Error(errors.join('\n'));
+   Object.assign(data,next);return {ok:true,count:input.rows.length};
+ }
  if(name==='saveHardwareProductBundle'){
    if(!Array.isArray(input.presentations)||!input.presentations.length)throw Error('Agrega al menos una presentación.');
    const next=structuredClone(data),result=saveCommerce(next,'saveCommerceProduct',input.product);
@@ -28,14 +42,17 @@ export function saveCommerce(data,name,input){
    const old=data.products.find(p=>sameId(p.id,input.id));if(old&&old.activity!=='JARCERIA')throw Error('Conserva el artículo histórico de limpieza.');
    if(old&&old.unit!==input.unit)throw Error('Conserva la unidad base; crea otro artículo si es distinto.');
    const id=old?.id??Math.max(0,...data.products.map(p=>Number(p.id)))+1;
-   const row={...old,id,name:input.name.trim(),unit:input.unit,activity:'JARCERIA',price:null,priceGroupId:null,categoryId:input.categoryId??null,lineId:null,active:input.active!==false,available:true,externalKey:input.externalKey??old?.externalKey??null};
+   const hardwareCategoryId=input.hardwareCategoryId===undefined?old?.hardwareCategoryId??null:input.hardwareCategoryId===''?null:input.hardwareCategoryId;
+   if(hardwareCategoryId!=null&&!hardwareCategory(data,hardwareCategoryId))throw Error('Selecciona una categoría de jarcería válida.');
+   const row={...old,id,hardwareCategoryId,name:validateHardwareName(data,input),unit:input.unit,activity:'JARCERIA',price:null,priceGroupId:null,categoryId:input.categoryId??old?.categoryId??null,lineId:null,active:input.active!==false,available:input.available??old?.available??true,externalKey:input.externalKey??old?.externalKey??null};
    row.characteristics=String(input.characteristics??old?.characteristics??'').trim().slice(0,1000);
    data.products=old?data.products.map(p=>p.id===old.id?row:p):[...data.products,row];return {ok:true,id};
  }
  const field=name==='savePresentation'?'presentations':'services';const rows=data.procurement[field]||[];const old=rows.find(r=>r.id===input.id);const id=old?.id??input.id??randomUUID();
- const row={...input,id,active:input.active!==false};
+ const row={...input,id,name:String(input.name??'').trim().replace(/\s+/g,' '),active:input.active!==false};
+ if(field==='presentations'&&rows.some(p=>p.id!==id&&sameId(p.productId,input.productId)&&normalizeText(p.name)===normalizeText(row.name)))throw Error('Ya existe esa presentación del producto.');
  if(field==='presentations'){const product=data.products.find(p=>sameId(p.id,row.productId));row.productId=product?.id;row.baseUnit=product?.unit;row.priceHistory=[...(old?.priceHistory||[]),...(old&&(old.price!==row.price||old.factor!==row.factor)?[{at:new Date().toISOString(),price:old.price,factor:old.factor,unit:old.unit}]:[])];validatePresentation(row,data.products);if(old&&!sameId(old.productId,row.productId))throw Error('Conserva la identidad física de la presentación.');}
- else {validateService(row);row.tariffHistory=[...(old?.tariffHistory||[]),...(old&&JSON.stringify([old.price,old.addons])!==JSON.stringify([row.price,row.addons])?[{at:new Date().toISOString(),price:old.price,priceMode:old.priceMode,addons:old.addons||[]}]:[])];}
+ else {validateService(row);row.tariffHistory=[...(old?.tariffHistory||[]),...(old&&JSON.stringify([old.price,old.addons,old.loadPricing,old.descriptionRequired])!==JSON.stringify([row.price,row.addons,row.loadPricing,row.descriptionRequired])?[{at:new Date().toISOString(),price:old.price,priceMode:old.priceMode,addons:old.addons||[],...(old.loadPricing?{loadPricing:old.loadPricing}:{}),...(old.descriptionRequired?{descriptionRequired:true}:{})}]:[])];}
  data.procurement[field]=old?rows.map(r=>r.id===id?row:r):[...rows,row];return {ok:true,id};
 }
 
@@ -63,12 +80,11 @@ export function presentationPurchase(data,input,catalog){
  const physical=entries.map(entry=>{
    const p=data.procurement.presentations?.find(p=>p.id===entry.presentationId&&p.active);if(!p)throw Error('Presentación no disponible.');
    const count=Number(entry.quantity);decimal(entry.quantity);if(p.integerOnly&&!Number.isInteger(count))throw Error('Cantidad de empaques entera requerida.');
-   const base=baseQuantity(entry.quantity,p.factor),cost=Number(decimal(entry.cost,2))/100;
-   const total=Number((decimal(entry.cost,2)*decimal(entry.quantity)+500000n)/1000000n)/100;
-   return {p,count,base,cost,total};
+   const base=baseQuantity(entry.quantity,p.factor),calculation=presentationPurchaseCost(entry);
+   return {p,count,base,...calculation};
  });
  const prepared=prepareFinishedPurchase(data.procurement,{activity:'JARCERIA',supplierId:input.supplierId,date:input.date,reference:input.reference||'',notes:input.notes||'',receipt:input.receipt??null,items:physical.map(({p,base,total})=>({directProductId:p.productId,quantity:base,costMode:'total',cost:total}))},catalog);
  const purchase=prepared.data.purchases[0];
- physical.forEach(({p,count,base,cost},ordinal)=>{const item=purchase.items[ordinal];item.productId=p.productId;item.commercialPurchase={presentationId:p.id,name:p.name,unit:p.unit,quantity:count,costPerPresentation:cost,factor:p.factor,baseQuantity:base,baseUnit:p.baseUnit};});
+ physical.forEach(({p,count,base,cost,costMode,paidTotal},ordinal)=>{const item=purchase.items[ordinal];item.productId=p.productId;item.commercialPurchase={presentationId:p.id,name:p.name,unit:p.unit,quantity:count,costPerPresentation:cost,costMode,...(paidTotal?{paidTotal}:{}),factor:p.factor,baseQuantity:base,baseUnit:p.baseUnit};});
  data.products=prepared.products;data.procurement=prepared.data;return {ok:true,purchaseId:purchase.id};
 }

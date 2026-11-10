@@ -1,3 +1,4 @@
+import HardwareCategoriesPage from './pages/HardwareCategoriesPage.jsx';
 import HardwareProductsPage from './pages/HardwareProductsPage.jsx';
 import HardwareComparatorPage from './pages/HardwareComparatorPage.jsx';
 import LaundryPage from './pages/LaundryPage.jsx';
@@ -53,7 +54,8 @@ function App() {
           {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/comercial" element={<Navigate to="/reportes/comerciales" replace/>}/>}
           {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/reportes/comerciales" element={<CommercePage reportOnly/>}/>}
           <Route path="/proveedores" element={<SuppliersPanel/>}/>
-          <Route path="/productos-jarceria" element={<HardwareProductsPage/>}/>
+          <Route path="/productos-jarceria" element={<><Header title="Productos de jarcería" subtitle="Administra tu catálogo de CalcQuim" onOpenMenu={() => setMobileMenuOpen(true)} /><HardwareProductsPage/></>}/>
+          <Route path="/productos-jarceria/categorias" element={<><Header title="Categorías de jarcería" subtitle="Organiza el catálogo de jarcería" onOpenMenu={() => setMobileMenuOpen(true)} /><HardwareCategoriesPage/></>}/>
           <Route path="/lavanderia" element={<LaundryPage/>}/>
           <Route path="/comparadores/limpieza" element={<CleaningScope><ProcurementComparator/></CleaningScope>}/>
           <Route path="/comparadores/jarceria" element={<HardwareComparatorPage/>}/>

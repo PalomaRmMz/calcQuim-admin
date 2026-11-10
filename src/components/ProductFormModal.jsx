@@ -1,4 +1,6 @@
 import MoreOptions from './MoreOptions';
+import InitialInventoryFields,{emptyProductInitial,productInitialPayload} from './InitialInventoryFields';
+import {PersistenceContext} from '../context/PersistenceContext.js';
 import FormLabel from "./FormLabel";
 import ValidatedForm from "./ValidatedForm";
 import ModalHeader from "./ModalHeader";
@@ -12,6 +14,9 @@ function ProductFormModal({
     show, product, categories, productLines, priceGroups, onClose, onSave,
 }) {
     const {wholesalePricing} = useContext(CatalogContext) || {};
+    const persistence=useContext(PersistenceContext);
+    const [initialInventory,setInitialInventory]=useState(emptyProductInitial);
+    const [saving,setSaving]=useState(false);
     const [wholesalePrice,setWholesalePrice] = useState(product?.wholesalePrice ?? '');
     const [active, setActive] = useState(product?.active ?? true);
     const [available, setAvailable] = useState(product?.available ?? true);
@@ -62,6 +67,7 @@ function ProductFormModal({
 
     async function handleSubmit(event) {
         event.preventDefault();
+        if(saving)return;
         setError("");
         if (priceType === 'individual' && unit === 'litro') {
             try { validWholesalePrice(wholesalePrice,price); } catch (error) { setError(error.message); return; }
@@ -103,7 +109,9 @@ function ProductFormModal({
             };
         }
 
-        const result = await onSave(productData);
+        if(!isEditing&&persistence&&initialInventory.enabled)productData.initialInventory=productInitialPayload(initialInventory,unit);
+        setSaving(true);
+        let result;try{result=await onSave(productData);}catch(e){setError(e.message);return;}finally{setSaving(false);}
 
         if (!result.ok) {
             setError(result.message);
@@ -148,7 +156,7 @@ function ProductFormModal({
                                         id="productUnit" required aria-required="true"
                                         className="form-select"
                                         value={unit}
-                                        onChange={(event) => setUnit(event.target.value)}
+                                        onChange={(event) => {setUnit(event.target.value);setInitialInventory(emptyProductInitial());}}
                                     >
                                         {!normalizeUnit(unit) && <option value={unit}>{unit}</option>}
                                         {UNITS.filter(entry=>!['carga','servicio'].includes(entry.id)).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
@@ -319,6 +327,8 @@ function ProductFormModal({
                                     </>
                                 )}
 
+                                {!isEditing&&persistence&&<InitialInventoryFields value={initialInventory} onChange={setInitialInventory} unit={unit}/>}
+                                {isEditing&&persistence&&<p className="form-text">El inventario se administra desde Inventarios. Si ya tiene inicial, utiliza Correcciones.</p>}
                                 {error && (
                                     <div className="alert alert-danger mt-3 mb-0" role="alert">
                                         {error}
@@ -331,7 +341,7 @@ function ProductFormModal({
                                     Cancelar
                                 </button>
 
-                                <button type="submit" className="btn btn-primary">
+                                <button type="submit" className="btn btn-primary" disabled={saving}>
                                     {isEditing ? "Guardar cambios" : "Agregar producto"}
                                 </button>
                             </div>

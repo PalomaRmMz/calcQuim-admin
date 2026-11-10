@@ -19,12 +19,12 @@ test('reporte real PostgreSQL: entradas, ventas, umbrales y consultas sin escrit
     const sale=async(id,q)=>cmd('createSale',{date:localDate(),payment:'Efectivo',items:[{productId:id,price:1,unit:'litro',quantity:q}]});
     await sale(7,1);
     const rows=async()=>inventoryReportRows((await service.inventory()).products);
-    assert.deepEqual((await rows()).map(r=>r.status),['out','low','low','sufficient','unknown','unconfigured','out']);
+    assert.deepEqual((await rows()).map(r=>r.status),['out','low','low','sufficient','unknown','unconfigured','negative']);
     await cmd('inventoryMovement',{productId:2,kind:'prepared',quantity:'10',unit:'litro',reasonCode:'prepared_product'});assert.equal((await rows()).find(r=>r.productId===2).status,'sufficient');
     await sale(4,2);assert.equal((await rows()).find(r=>r.productId===4).status,'low');
     await cmd('inventoryReplenishment',{productId:4,unit:'litro',minimum:'3',usualBatch:'65',reasonCode:'replenishment_configuration'});assert.equal((await rows()).find(r=>r.productId===4).status,'sufficient');
     const snapshot=regularizationHash({data:await service.read(),inventory:await service.inventory()});
-    for(let i=0;i<5;i++){const filtered=filterInventoryReport(await rows(),{state:'need'});assert.equal(filtered.length,3);assert.ok(inventoryReportCsv(filtered).includes('AGOTADO'));}
+    for(let i=0;i<5;i++){const filtered=filterInventoryReport(await rows(),{state:'need'});assert.equal(filtered.length,2);assert.ok(inventoryReportCsv(filtered).includes('AGOTADO'));}
     assert.equal(regularizationHash({data:await service.read(),inventory:await service.inventory()}),snapshot);
   }finally{assert.match(schema,/^calcquim_test_rep_[a-f0-9]{32}$/);await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);await pool.end();}
 });

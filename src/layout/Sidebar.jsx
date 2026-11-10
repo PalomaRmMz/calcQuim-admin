@@ -29,7 +29,7 @@ export default function Sidebar({ collapsed, setCollapsed, mobileMenuOpen, setMo
                 return <div key={item.path} className={`sidebar-group ${active ? "parent-active" : ""} ${expanded ? "group-open" : ""}`}>
                     <button type="button" className="sidebar-item sidebar-parent" title={item.label} aria-label={item.label} aria-expanded={expanded} aria-controls={controls} onClick={() => {
                         if (compact) setCollapsed?.(false);
-                        setAccordion({ route, openGroup: compact || active || openGroup !== item.path ? item.path : null });
+                        setAccordion({ route, openGroup: compact || openGroup !== item.path ? item.path : null });
                     }}><FontAwesomeIcon icon={item.icon} className="sidebar-item-icon" />{!compact && <><span>{item.label}</span><FontAwesomeIcon icon={expanded ? faChevronDown : faChevronRight} className="sidebar-chevron" /></>}</button>
                     <div id={controls} className="sidebar-submenu" hidden={!expanded}>
                         {item.children.map(([label, path]) => <NavLink key={path} end to={path} className={({ isActive }) => `sidebar-child ${isActive || (activeModule === item.path && path === "/administracion/datos") ? "active" : ""}`} onClick={closeMenu}>{label}</NavLink>)}

@@ -1,3 +1,5 @@
+import {webActivationPlan} from '../services/webActivationPlan.mjs';
+import {operationsReport} from '../../../src/domain/operationsReport.mjs';
 import {commerceReport} from '../../../src/domain/commerce.mjs';
 import {commercialImport} from '../services/commerce.mjs';
 import { Router } from 'express';
@@ -27,6 +29,7 @@ export function dataRouter(service,mode='synthetic') {
   });
   const {run,read}=createDataController(service);
   r.get('/dataset',read);
+  r.get('/web-activation/plan',async(_req,res)=>{const snapshot=await service.read();res.json({...webActivationPlan(snapshot.data),revision:snapshot.revision,generation:snapshot.generation});});
   r.get('/commerce/import-preview',async(req,res)=>res.json(commercialImport((await service.read()).data,{activity:req.query.activity},true)));
   if(mode!=='operational')r.get('/commerce/reports',async(req,res)=>res.json(commerceReport((await service.read()).data.sales,req.query.from,req.query.to)));
   r.get('/reports/general-catalog',async(_req,res)=>{
@@ -34,6 +37,8 @@ export function dataRouter(service,mode='synthetic') {
     const data=Object.fromEntries(['products','categories','productLines','priceGroups'].map(name=>[name,snapshot.data[name]]));
     res.json({data,revision:snapshot.revision,generation:snapshot.generation,generatedAt:new Date().toISOString()});
   });
+  r.get('/inventory/purchases',async(_req,res)=>res.json(await service.purchaseInventory()));
+  r.get('/reports/operations',async(req,res)=>{try{res.json(operationsReport(await service.operations(),req.query));}catch(error){if(error.message==='Actividad o período inválido.')throw new ApiError(422,'INVALID_REPORT_PERIOD',error.message);throw error;}});
   r.get('/inventory',async(_req,res)=>res.json(await service.inventory()));
   r.post('/commands/:name',async(req,res)=>run(req,res,req.params.name,req.body.args));
   r.get('/analytics/:kind',async(req,res)=>{

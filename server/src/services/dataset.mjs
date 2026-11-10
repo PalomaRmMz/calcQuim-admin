@@ -1,3 +1,6 @@
+import {webPaymentSnapshot,configureWebPayment} from './webPayment.mjs';
+import {purchaseInventoryView} from './purchaseInventory.mjs';
+import {syncProductInitialInventory} from './productInitialInventory.mjs';
 import { createHash } from 'node:crypto';
 import { schemaName } from '../db/migrate.mjs';
 import { readDataset, writeDataset } from '../repositories/dataset.mjs';
@@ -14,6 +17,7 @@ export function canonical(value) {
 export function createDatasetService(pool, schema='calcquim_sandbox',purpose='synthetic') {
   schema=schemaName(schema);
   if(!['synthetic','operational'].includes(purpose))throw new Error('Purpose no autorizado.');
+  const paymentView=async c=>{const p=await webPaymentSnapshot(c);return p.enabled?{webPaymentPolicy:{enabled:true,version:p.policy_version}}:{};};
   const inventoryPending=async c=>await inventoryAvailable(c)?(await c.query("SELECT sale_id AS \"saleId\",ordinal,scope,reason FROM inventory_pending WHERE state='pending' ORDER BY sale_id,ordinal")).rows:[];
   const read=(c,lock=false)=>readDataset(c,lock,purpose==='operational'?'operational':false);
   async function transaction(callback, readOnly=false) {
@@ -29,7 +33,9 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
     finally {c.release();}
   }
   return {
-    read:()=>transaction(async c=>({...await read(c),inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false}),true),
+    read:()=>transaction(async c=>({...await read(c),...await paymentView(c),inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false}),true),
+    purchaseInventory:()=>transaction(async c=>purchaseInventoryView(c,(await read(c)).data),true),
+    operations:()=>transaction(async c=>{const snapshot=await read(c);return {data:snapshot.data,revision:snapshot.revision,inventory:await readInventory(c,snapshot.data),purchases:await purchaseInventoryView(c,snapshot.data)};},true),
     inventory:()=>transaction(async c=>readInventory(c,(await read(c)).data),true),
     mobileStatus:key=>transaction(async c=>{
       const row=(await c.query('SELECT response FROM idempotency_requests WHERE request_key=$1',['mobile:'+key])).rows[0];
@@ -47,25 +53,27 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
         if(previous) {
           if(previous.request_hash!==hash) throw new ApiError(409,'IDEMPOTENCY_CONFLICT','La clave ya corresponde a otra operación.');
           // Se devuelve resultado original y estado actual para no regresar la vista a una revisión antigua.
-          return {...current,result:previous.response,replayed:true,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
+          return {...current,...await paymentView(c),result:previous.response,replayed:true,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
         }
         if(current.generation!==generation||current.revision!==revision) throw new ApiError(412,'STALE_DATA','Los datos cambiaron. Recarga antes de guardar.');
         let result;
         const before=structuredClone(current.data);
         try {
-          if(inventoryCommands.includes(name))result={ok:true,...await executeInventoryCommand(c,current.data,name,args)};
-          else result=executeCommand(current.data,current.counters,name,args);
+          if(name==='configureWebPaymentPolicy')result=await configureWebPayment(c,args[0]);
+          else if(inventoryCommands.includes(name))result={ok:true,...await executeInventoryCommand(c,current.data,name,args)};
+          else {const policy=await webPaymentSnapshot(c);result=executeCommand(current.data,current.counters,name,args,{webPaymentEnabled:channel==='WEB'&&policy.enabled,webPaymentVersion:policy.policy_version});}
         }
         catch(error) {if(error instanceof ApiError) throw error; throw new ApiError(422,'DOMAIN_VALIDATION',error.message);}
-        if(inventoryCommands.includes(name)) { if(JSON.stringify(before.sales)!==JSON.stringify(current.data.sales))await writeDataset(c,current.data,current.counters); else await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true'); }
-        else {await writeDataset(c,current.data,current.counters);await syncInventory(c,before,current.data,name,args);
+        if(name==='configureWebPaymentPolicy'){await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true');}
+        else if(inventoryCommands.includes(name)) { if(JSON.stringify(before)!==JSON.stringify(current.data))await writeDataset(c,current.data,current.counters); else await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true'); }
+        else {await writeDataset(c,current.data,current.counters);await syncProductInitialInventory(c,before,current.data,name,args);await syncInventory(c,before,current.data,name,args);
           if(name==='voidSale') {
             const sale=current.data.sales.find(s=>s.id===args[0]);
             sale.history=[...(sale.history||[]),{action:'voided',channel,at:new Date().toISOString()}];
             await c.query('UPDATE sales SET record=$2 WHERE id=$1',[String(sale.id),JSON.stringify({...sale,items:[]})]);
           }}
         await c.query('INSERT INTO idempotency_requests(request_key,request_hash,response) VALUES($1,$2,$3)',[requestKey,hash,JSON.stringify(result)]);
-        return {...current,revision:current.revision+1,result,replayed:false,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
+        return {...current,...await paymentView(c),revision:current.revision+1,result,replayed:false,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
       });
     },
   };

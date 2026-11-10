@@ -1,3 +1,4 @@
+import {assertPayment} from '../domain/webPayment.mjs';
 import { STORAGE_KEYS } from "./catalogStorage.js";
 import { calculateItems, localDate } from "../utils/salesUtils.js";
 import { validDate } from "../utils/procurementUtils.js";
@@ -20,7 +21,8 @@ export function validateSales(sales) {
             if (!item || (item.productId == null && !(['line','category','priceGroup','service'].includes(item.reference?.kind) && item.reference?.id != null)) || products.has(item.id || String(item.productId)) || typeof item.name !== "string" || !normalizeUnit(item.unit) || !amount(item.price) || !Number.isFinite(item.quantity) || item.quantity <= 0 || !amount(item.amount)) throw new Error("Hay un renglón de venta inválido. Se conservó el historial original.");
             products.add(item.id || String(item.productId));
         }
-        if (Math.abs(sale.total - sale.items.reduce((sum, i) => sum + i.amount, 0)) > 0.011) throw new Error("El total de una venta no coincide con sus renglones.");
+        if(sale.monetary)assertPayment(sale);
+        else if (Math.abs(sale.total - sale.items.reduce((sum, i) => sum + i.amount, 0)) > 0.011) throw new Error("El total de una venta no coincide con sus renglones.");
     }
 }
 

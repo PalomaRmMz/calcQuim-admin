@@ -1,6 +1,8 @@
+import {createWebSale,correctWebAwareSale} from './webPhysicalCapture.mjs';
+import {applyWebPayment} from './webPayment.mjs';
 import {commerceCommands,saveCommerce,commercialImport,presentationPurchase} from './commerce.mjs';
 import {validatePresentation,validateService} from '../../../src/domain/commerce.mjs';
-import { createMobileSale, correctMobileSale } from '../mobile/domain.mjs';
+import { createMobileSale } from '../mobile/domain.mjs';
 import { createCatalogActions } from '../../../src/services/catalogDomain.js';
 import { catalogCollectionError } from '../../../src/services/catalogValidation.js';
 import { STORAGE_KEYS } from '../../../src/services/catalogStorage.js';
@@ -21,7 +23,7 @@ export class ApiError extends Error {
 }
 export const catalogCommands = ['addCategory','updateCategory','deleteCategory','addProductLine','updateProductLine','deleteProductLine','addPriceGroup','updatePriceGroup','deletePriceGroup','addProduct','updateProduct','deleteProduct','addProductsBatch','updateProductsBatch'];
 export const procurementCommands = ['savePurchasedItem','savePurchasedItemsBatch','saveSupplyYieldBatch','savePurchasedItemSetup','saveSupplySource','saveSupplyConversion','configureSupplyBatch','configureProductBatch','saveSources','saveSupplier','setSupplyActive','addSupplierPrice','deleteEntity','savePurchase','voidPurchase'];
-export const commandNames = [...commerceCommands,...catalogCommands,...procurementCommands,'createCommercialSale','createSale','createMobileSale','correctMobileSale','voidSale','configureWholesalePricing'];
+export const commandNames = ['configureWebPaymentPolicy',...commerceCommands,...catalogCommands,...procurementCommands,'createCommercialSale','createSale','createMobileSale','correctMobileSale','voidSale','configureWholesalePricing'];
 export function memoryStorage(data) {
   const values = {
     [STORAGE_KEYS.products]: data.products,[STORAGE_KEYS.categories]:data.categories,
@@ -58,7 +60,8 @@ export function validateDataset(data) {
   }
   if (data.sales.some(s=>s.items.some(i=>i.productId!=null&&!data.products.some(p=>p.id===i.productId)))) throw new ApiError(422,'INVALID_RELATION','Venta con producto inexistente.');
 }
-export function executeCommand(data, counters, name, args) {
+export function executeCommand(data, counters, name, args, options={}) {
+  const beforeSales=data.sales;
   if (!commandNames.includes(name) || !Array.isArray(args) || args.length>3) throw new ApiError(400,'INVALID_COMMAND','Operación no válida.');
   if(['previewCommerceImport','importCommerceCatalog'].includes(name)){if(data.procurement.commerceSchema!==1)throw Error('Migración comercial pendiente.');const result=commercialImport(data,args[0],name==='previewCommerceImport');validateDataset(data);return result;}
   if(name==='savePresentationPurchase'){const result=presentationPurchase(data,args[0],{products:data.products,categories:data.categories,productLines:data.productLines,priceGroups:data.priceGroups});validateDataset(data);return result;}
@@ -121,8 +124,8 @@ export function executeCommand(data, counters, name, args) {
       case 'voidPurchase':
         if (!p.purchases.some(x=>x.id===args[0]&&!x.voidedAt)) throw new ApiError(404,'NOT_FOUND','Compra no encontrada o anulada.');
         p=procurement.voidPurchase(p,args[0]); break;
-      case 'correctMobileSale': data.sales=correctMobileSale(data.sales,args[0],args[1]); break;
-      case 'createCommercialSale': data.sales=createMobileSale(data.sales,{...args[0],origin:'WEB'},{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
+      case 'correctMobileSale': data.sales=correctWebAwareSale(data.sales,args[0],args[1]); break;
+      case 'createCommercialSale': data.sales=createWebSale(data.sales,{...args[0],origin:'WEB'},{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
       case 'createMobileSale': data.sales=createMobileSale(data.sales,{...args[0],origin:'MOVIL'},{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
       case 'createSale': data.sales=createSale(data.sales,args[0],{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); break;
       case 'voidSale': data.sales=voidSale(data.sales,args[0]); break;
@@ -131,6 +134,8 @@ export function executeCommand(data, counters, name, args) {
     data.procurement=p;
   }
   for (const field of ['categories','productLines','priceGroups','products']) counters[field]=Math.max(counters[field]??0,0,...data[field].map(x=>Number(x.id)));
+  applyWebPayment(data,beforeSales,name,args,options);
+  if(name==='createCommercialSale')result.receipt=data.sales[0].originalReceipt;
   counters.sales=Math.max(counters.sales??0,0,...data.sales.map(x=>Number(String(x.folio??'').replace(/^V-/,''))||0));
   validateDataset(data);
   return result;

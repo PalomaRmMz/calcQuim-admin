@@ -1,3 +1,4 @@
+import {validateLaundryPricing,calculateLaundryLoad} from './laundryPricing.mjs';
 export const COMMERCE_VERSION='fullclean-commerce-v1';
 export const ACTIVITIES=['LIMPIEZA','JARCERIA','LAVANDERIA'];
 const fail=message=>{throw new Error(message);};
@@ -23,7 +24,7 @@ export function validatePresentation(p,products){
 export function validateService(s){
  if(!s?.id||!s.name?.trim()||s.name.length>200||!['fixed','custom'].includes(s.priceMode)||!['carga','servicio'].includes(s.unit)||typeof s.active!=='boolean')fail('Concepto de servicio inválido.');
  if(s.priceMode==='fixed')decimal(s.price,2,false);else if(s.price!=null)fail('Un servicio cotizado no tiene tarifa fija artificial.');
- const ids=new Set();for(const a of s.addons||[]){if(!a.id||ids.has(a.id)||!a.name?.trim())fail('Adicional inválido o repetido.');ids.add(a.id);decimal(a.price,2,false);}return s;
+ const ids=new Set();for(const a of s.addons||[]){if(!a.id||ids.has(a.id)||!a.name?.trim())fail('Adicional inválido o repetido.');ids.add(a.id);decimal(a.price,2,false);}validateLaundryPricing(s);return s;
 }
 export function commerceChoices(data){
  const model=data?.procurement??data??{},products=data?.products??[];
@@ -36,15 +37,17 @@ export function makeCommerceLine(choice,tariff,mode,value,id,options={}){
  const custom=s?.priceMode==='custom';
  if(!custom&&mode!=='quantity')fail('Captura la cantidad de esta presentación o servicio.');
  const quantity=custom?1:Number(String(value).replace(',','.'));decimal(custom?'1':value);
- if((p?.integerOnly||s?.unit==='carga'||s?.unit==='servicio')&&!Number.isInteger(quantity))fail('La cantidad debe ser entera.');
+ if((p?.integerOnly||s?.unit==='carga'&&!s.loadPricing||s?.unit==='servicio')&&!Number.isInteger(quantity))fail('La cantidad debe ser entera.');
  const selected=options.addons||[];if(!Array.isArray(selected)||new Set(selected).size!==selected.length)fail('Adicionales inválidos.');
  const addons=selected.map(key=>(s?.addons||[]).find(a=>a.id===key)||fail('Adicional no disponible.'));
  if(p&&selected.length)fail('El producto no admite adicionales.');
+ if(custom&&s.descriptionRequired&&(typeof options.description!=='string'||!options.description.trim()||options.description.trim().length>200))fail('Describe brevemente el trabajo (máximo 200 caracteres).');
  const cents=custom?decimal(value,2):decimal(tariff.price,2,false)+addons.reduce((n,a)=>n+decimal(a.price,2,false),0n);
  const micro=decimal(quantity),amountCents=(cents*micro+500000n)/1000000n;
  if(amountCents===0n)fail('El importe debe ser positivo.');
- const price=num(cents)/100,amount=num(amountCents)/100;
- return {id,reference:{kind:choice.kind,id:choice.refId},name:choice.name,context:choice.context,tariffKey:tariff.key,unit:tariff.unit,price,quantity,amount,subtotal:amount,discount:0,discountRate:0,entryMode:custom?'amount':'quantity',requestedAmount:custom?amount:null,capturedValue:String(value),commerceVersion:COMMERCE_VERSION,lineType:s?'service':'physical',activity:s?'LAVANDERIA':'JARCERIA',productId:p?.productId??null,presentationId:p?.id??null,serviceId:s?.id??null,addons:structuredClone(addons),description:custom?String(options.description||choice.name).trim().slice(0,200):'',presentationSnapshot:p?structuredClone(p):null,serviceSnapshot:s?structuredClone(s):null,baseQuantity:p?baseQuantity(quantity,p.factor):null,baseUnit:p?.baseUnit??null,packageState:'equivalent_only',eligibleProductIds:p?[p.productId]:[]};
+ const laundry=s?.loadPricing?calculateLaundryLoad(s,value,selected):null;
+ const price=laundry?.price??num(cents)/100,amount=laundry?.amount??num(amountCents)/100;
+ return {id,reference:{kind:choice.kind,id:choice.refId},name:choice.name,context:choice.context,tariffKey:tariff.key,unit:tariff.unit,price,quantity,amount,subtotal:amount,...(laundry?{laundryPricingSnapshot:laundry.snapshot}:{}),discount:0,discountRate:0,entryMode:custom?'amount':'quantity',requestedAmount:custom?amount:null,capturedValue:String(value),commerceVersion:COMMERCE_VERSION,lineType:s?'service':'physical',activity:s?'LAVANDERIA':'JARCERIA',productId:p?.productId??null,presentationId:p?.id??null,serviceId:s?.id??null,addons:structuredClone(addons),description:custom?String(options.description||choice.name).trim().slice(0,200):'',presentationSnapshot:p?structuredClone(p):null,serviceSnapshot:s?structuredClone(s):null,baseQuantity:p?baseQuantity(quantity,p.factor):null,baseUnit:p?.baseUnit??null,packageState:'equivalent_only',eligibleProductIds:p?[p.productId]:[]};
 }
 export function resolveCommerceLine(row,data,id){
  const choice=commerceChoices(data).find(c=>c.kind===row.reference?.kind&&sameId(c.refId,row.reference.id));if(!choice)fail('Concepto inactivo o inexistente.');

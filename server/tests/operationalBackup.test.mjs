@@ -7,9 +7,9 @@ import { createOperationalBackup,validateBackupPolicy } from '../src/services/op
 
 test('backup sintético íntegro, referencia de snapshot y segunda copia sin reemplazo',async()=>{
   const root=await mkdtemp(join(tmpdir(),'calcquim-backup-test-')),directory=join(root,'primary'),secondaryDirectory=join(root,'secondary');
-  const options={directory,database:'calcquim_operational',policy:{secondaryDirectory},dump:p=>writeFile(p,'synthetic archive'),verify:async p=>assert.equal(await readFile(p,'utf8'),'synthetic archive'),reference:{snapshotSha256:'synthetic-snapshot',restoreVerified:true}};
+  const options={directory,database:'calcquim_operational',policy:{secondaryDirectory},dump:p=>writeFile(p,'synthetic archive'),verify:async p=>assert.equal(await readFile(p,'utf8'),'synthetic archive'),reference:{snapshotSha256:'synthetic-snapshot',purchaseInventorySha256:'synthetic-purchase-ledger',restoreVerified:true}};
   const first=await createOperationalBackup(options),second=await createOperationalBackup(options);
-  assert.notEqual(first.file,second.file);assert.equal(first.secondaryVerified,true);assert.equal(first.restoreVerified,false);assert.equal(first.snapshotSha256,'synthetic-snapshot');
+  assert.notEqual(first.file,second.file);assert.equal(first.secondaryVerified,true);assert.equal(first.restoreVerified,false);assert.equal(first.snapshotSha256,'synthetic-snapshot');assert.equal(first.purchaseInventorySha256,'synthetic-purchase-ledger');assert.equal(first.purchaseInventorySnapshotVersion,1);
   assert.deepEqual(await readFile(join(directory,first.file)),await readFile(join(secondaryDirectory,first.file)));
 });
 test('archivo inválido se conserva para diagnóstico pero no obtiene manifiesto exitoso',async()=>{

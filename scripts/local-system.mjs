@@ -1,3 +1,4 @@
+import {startupTiming} from './startup-timing.mjs';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -15,6 +16,7 @@ const directory=new URL('../server/artifacts/launcher/',import.meta.url);
 const stateFile=new URL('manager.private.json',directory);
 const controlUrl='http://127.0.0.1:3099';
 const action=process.argv[2]??'start';
+const timing=startupTiming();
 const request=async(url,options={})=>fetch(url,{...options,signal:AbortSignal.timeout(15000)});
 async function state(){try{return JSON.parse(await readFile(stateFile,'utf8'));}catch{return null;}}
 async function manager(){const s=await state();if(!s)return null;try{const r=await request(controlUrl+'/status',{headers:{Authorization:`Bearer ${s.token}`}});return r.ok?await r.json():null;}catch{return null;}}
@@ -78,9 +80,9 @@ try{
     if(!await listening(config.port)){
       const operationalConfig={...config,database:{...config.database,max:4,idleTimeoutMillis:5000}};
       const database=createDatabase(operationalConfig);
-      try{await waitForDatabase(()=>database.pool.query('SELECT 1'));}
+      try{await timing.measure('postgresReadyMs',()=>waitForDatabase(()=>database.pool.query('SELECT 1')));}
       catch(error){await database.close();throw error;}
-      api=await startServer(operationalConfig,database);
+      api=await timing.measure('expressStartMs',()=>startServer(operationalConfig,database));
       stage='mobile';
       mobile=await optionalMobile(()=>startOperationalMobile(database,operationalConfig),async()=>{
         mobileWarning=true;
@@ -89,7 +91,7 @@ try{
       });
     }
     stage='verify-api';
-    const snapshot=await verifyApi(config);
+    const snapshot=await timing.measure('verifyApiMs',()=>verifyApi(config));
     stage='react';
     if(!await listening(5173)){
       const child=spawn(process.execPath,[fileURLToPath(new URL('./local-frontend.mjs',import.meta.url))],{cwd:root,windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
@@ -108,13 +110,14 @@ try{
         child.once('message',message=>{clearTimeout(timer);message.ready?resolve():reject(new Error('REACT_MISMATCH'));});
       });
     }
-    await waitForFrontend(async()=>{
+    await timing.measure('frontendReadyMs',()=>waitForFrontend(async()=>{
       const main=await(await request('http://127.0.0.1:5173/src/main.jsx')).text();
       const proxy=await request('http://127.0.0.1:5173/api/v1/dataset');const proxied=await proxy.json();
       if(!/CALCQUIM_OPERATIONAL["']?\s*:\s*true/.test(main)||!proxy.ok||proxied.generation!==snapshot.generation)throw new Error('REACT_MISMATCH');
-    });
+    }));
     await mkdir(directory,{recursive:true});
-    await writeFile(stateFile,JSON.stringify({pid:process.pid,token,startedAt:new Date().toISOString()}),{mode:0o600});ready=true;
+    await writeFile(stateFile,JSON.stringify({pid:process.pid,token,startedAt:new Date().toISOString()}),{mode:0o600});
+    await writeFile(new URL('last-startup-timing.json',directory),JSON.stringify({at:new Date().toISOString(),...timing.snapshot(),reusedExpress:!api,reusedFrontend:!vite}));ready=true;
     process.on('SIGINT',()=>close());process.on('SIGTERM',()=>close());
   }else throw new Error('INVALID_ACTION');
 }catch(error){

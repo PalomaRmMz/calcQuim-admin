@@ -1,3 +1,7 @@
+import OperationsReport from '../components/OperationsReport';
+import CleaningScope from '../components/CleaningScope';
+import HardwareReports from '../components/HardwareReports';
+import CommercePage from './CommercePage';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -22,6 +26,14 @@ import { costOfferLabel, yieldOfferLabel } from '../utils/procurementLabels.js';
 import '../styles/components/Reports.css';
 
 const tabs = ['Resumen', 'Abastecimiento y rendimientos', 'Compras y proveedores', 'Catálogo', 'Calidad de configuración', 'Existencias y reposici\u00f3n'];
+const qualityHelp=[
+ ['Configuración pendiente','No hay una alternativa activa utilizable para abastecerlo. Revisa el artículo, el proveedor y su relación con el producto.'],
+ ['Configuración pendiente','Falta completar la conversión del insumo a producto final. Impide comparar costos por litro obtenido; confirma el rendimiento en Abastecimiento.'],
+ ['Configuración pendiente','El artículo relacionado no tiene una oferta activa. Agrega o activa su proveedor y presentación.'],
+ ['Información pendiente','No hay una referencia de costo utilizable. Registra una compra o cotización verificable para comparar proveedores.'],
+ ['Organización pendiente','Falta clasificar el producto. Asigna su categoría para mejorar búsquedas y reportes; no cambia su existencia.'],
+ ['Inconsistencia','La línea no corresponde a la categoría. Revisa la clasificación antes de editarla; conserva las referencias históricas.'],
+];
 const pct = n => `${Number(n.toFixed(1))}%`;
 const nameColumn = { accessorKey: 'name', header: 'Producto' };
 const purchaseColumns = [{ accessorKey: 'date', header: 'Fecha' }, { accessorKey: 'supplierNameSnapshot', header: 'Proveedor registrado' }, { id: 'items', header: 'Artículos registrados', accessorFn: p => p.items.map(i => i.name).join(', ') }, { id: 'total', header: 'Total pagado', accessorFn: p => money(p.total) }];
@@ -60,7 +72,7 @@ function CostEvolution({ analytics, from, to }) {
     </ContentPanel>;
 }
 
-export default function ReportsPage() {
+function CleaningReports() {
     const catalog = useCatalog();
     const { data, analytics, error } = useProcurement();
     const products = useMemo(() => catalog.products.map(p => ({ ...p, name: getProductDisplayName(p, catalog.categories, catalog.productLines) })), [catalog.products, catalog.categories, catalog.productLines]);
@@ -118,7 +130,12 @@ export default function ReportsPage() {
             ['Ofertas sin costo disponible', report.withoutCost.length, () => show('Ofertas sin costo disponible', report.withoutCost.map(s => ({ ...s, name: data.purchasedItems.find(a => a.id === s.purchasedItemId)?.name, supplier: data.suppliers.find(p => p.id === s.supplierId)?.name })), [{ accessorKey: 'name', header: 'Artículo' }, { accessorKey: 'supplier', header: 'Proveedor' }, { id: 'presentation', header: 'Presentación', accessorFn: s => supplyPresentation(s) }])],
             ['Productos sin categoría (organización)', report.active.filter(p => p.categoryId == null).length, () => showProducts('Productos sin categoría', report.active.filter(p => p.categoryId == null))],
             ['Líneas inconsistentes con la categoría', report.inconsistentLines.length, () => showProducts('Líneas inconsistentes con la categoría', report.inconsistentLines)],
-        ].map(([label, count, click]) => <button key={label} className="report-quality-row" onClick={click}><span>{label}</span><strong>{count} →</strong></button>)}</div><p className="form-text">Sin costo disponible significa que no existe una referencia utilizable; no es un error obligatorio. Reportes no modifica datos.</p></ContentPanel>}
+        ].map(([label, count, click],index) => <button key={label} className="report-quality-row" onClick={click}><span>{label}<small className="d-block text-muted">{qualityHelp[index][0]}: {qualityHelp[index][1]}</small></span><strong>{count} →</strong></button>)}</div><p className="form-text">Sin costo disponible significa que no existe una referencia utilizable; no es un error obligatorio. Reportes no modifica datos.</p></ContentPanel>}
         {detail && <AppModal title={detail.title} subtitle={`${detail.rows.length} registros · datos del reporte`} onClose={() => setDetail(null)} maxWidth="lg"><Link className="btn btn-outline-secondary mb-3" to={detail.link}>Ver en {detail.link === '/compras/comparador' ? 'Comparador' : detail.link === '/compras' ? 'Compras' : 'Abastecimiento'}</Link>{detail.rows.length ? <DataTable mobileCards key={detail.title} columns={detail.columns} data={detail.rows} /> : <EmptyState title="Sin registros">No hay elementos que cumplan esta condición.</EmptyState>}</AppModal>}
     </div>;
+}
+
+export default function ReportsPage(){
+ const [activity,setActivity]=useState('LIMPIEZA');
+ return <><div className="filter-bar mb-3"><label>Actividad del reporte<select className="form-select" value={activity} onChange={e=>setActivity(e.target.value)}><option value="LIMPIEZA">Productos de limpieza</option><option value="JARCERIA">Productos de jarcería</option><option value="GENERAL">Resumen general del negocio</option></select></label></div><OperationsReport key={activity} activity={activity}/>{activity==='LIMPIEZA'?<CleaningScope><CleaningReports/></CleaningScope>:activity==='JARCERIA'?<HardwareReports/>:<CommercePage reportOnly/>}</>;
 }

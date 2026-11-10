@@ -86,8 +86,8 @@ test('actualizar desde esquema 007 conserva precios y venta histórica, sin prec
   const pool=new pg.Pool(config.database),schema='calcquim_test_whup_'+randomUUID().replaceAll('-','');
   try {
     await migrate(pool,schema);
-    // Rehearse the real upgrade from 007, using the guarded empty rollback.
-    await migrate(pool,schema,'down');
+    // Rehearse exactly schema 007 regardless of later additive migrations.
+    while((await pool.query(`SELECT max(version) AS version FROM ${schema}.schema_migrations`)).rows[0].version>7)await migrate(pool,schema,'down');
     const service=createDatasetService(pool,schema);let state=await service.read();
     const command=async(name,...args)=>{state=await service.command({name,args,revision:state.revision,generation:state.generation,requestKey:randomUUID()});};
     await command('addPriceGroup',{name:'Normal anterior sintético',price:20,active:true});

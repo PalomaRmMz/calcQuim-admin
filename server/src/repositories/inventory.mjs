@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import {syncPackMovement,readPackInventory} from './packInventory.mjs';
 import { normalizeUnit } from '../../../src/utils/units.js';
 import { inventoryDecimal,inventoryText } from '../../../src/services/inventoryUnits.js';
 // El hash de respaldos anteriores no incluía los campos derivados del inventario inicial.
 export function inventorySnapshot(view,version=3){
   const snapshot=JSON.parse(JSON.stringify(view));
+  delete snapshot.packInventory;
   if(version===3)return snapshot;
   delete snapshot.initialCaptureMode;
   if(version===2)return snapshot;
@@ -13,7 +15,8 @@ export function inventorySnapshot(view,version=3){
   return snapshot;
 }
 export async function inventoryAvailable(c){return (await c.query("SELECT to_regclass('inventory_settings') IS NOT NULL AS available")).rows[0].available;}
-export async function inventoryPolicy(c){return (await c.query('SELECT sales_enabled,policy FROM inventory_settings WHERE singleton=true')).rows[0];}
+export async function inventoryPolicy(c){const row=(await c.query('SELECT sales_enabled,policy FROM inventory_settings WHERE singleton=true')).rows[0];return {...row,policy:Object.fromEntries(Object.entries(row.policy).filter(([key])=>!['purchaseAutomation','packAutomation'].includes(key)))};}
+export async function purchaseAutomationPolicy(c){return (await c.query("SELECT policy->'purchaseAutomation' AS policy FROM inventory_settings WHERE singleton=true")).rows[0]?.policy??{enabled:false};}
 export async function inventoryChange(c,action,reference){await c.query('INSERT INTO inventory_changes(action,reference) VALUES($1,$2)',[action,JSON.stringify(reference)]);}
 export async function inventoryAccount(c,product){
   const unit=normalizeUnit(product.unit);if(!unit)throw new Error('Unidad de producto no compatible con inventario.');
@@ -25,6 +28,7 @@ export async function inventoryAccount(c,product){
 export async function appendInventoryMovement(c,product,input){
   await inventoryAccount(c,product);
   const id=randomUUID();
+  await syncPackMovement(c,product,input,id);
   const fields={id,product_id:String(product.id),kind:input.kind,quantity:input.quantity,unit:normalizeUnit(product.unit),certainty:input.certainty??'confirmed',reason:input.reason,occurred_at:input.occurredAt??new Date().toISOString(),purchase_id:input.purchaseId??null,sale_id:input.saleId??null,sale_ordinal:input.saleOrdinal??null,reversal_of:input.reversalOf??null,origin_key:input.originKey??null,reference:JSON.stringify(input.reference??{})};
   const names=Object.keys(fields);
   await c.query(`INSERT INTO inventory_movements(${names.join(',')}) VALUES(${names.map((_,i)=>'$'+(i+1)).join(',')})`,Object.values(fields));
@@ -51,5 +55,6 @@ export async function readInventory(c,data){
     const events=changes.filter(e=>String(e.reference.purchaseId)===String(p.id)&&['purchase_review_required','purchase_review_confirmed'].includes(e.action));
     return events[0]?.action==='purchase_review_required';
   }).map(p=>({purchaseId:p.id,date:p.date,voided:!!p.voidedAt}));
-  return {enabled:true,initialControlEnabled:true,initialCaptureMode:'automatic',policy:await inventoryPolicy(c),products,pending,movements,changes,purchaseReviews};
+  const view={enabled:true,initialControlEnabled:true,initialCaptureMode:'automatic',policy:await inventoryPolicy(c),products,pending,movements,changes,purchaseReviews};
+  const packInventory=await readPackInventory(c,data,view);return packInventory?{...view,packInventory}:view;
 }

@@ -1,3 +1,5 @@
+import {webPaymentSnapshot} from '../src/services/webPayment.mjs';
+import {packAvailable,packInventorySnapshot} from '../src/repositories/packInventory.mjs';
 import { readFile,writeFile } from 'node:fs/promises';
 import { resolve,dirname,join } from 'node:path';
 import pg from 'pg';
@@ -7,6 +9,7 @@ import { readDataset } from '../src/repositories/dataset.mjs';
 import { canonical } from '../src/services/dataset.mjs';
 import { sha256,reconcileRelationalColumns } from '../src/services/reconciliation.mjs';
 import { readInventory,inventorySnapshot } from '../src/repositories/inventory.mjs';
+import {purchaseInventoryAvailable,purchaseInventoryView,purchaseInventorySnapshot} from '../src/services/purchaseInventory.mjs';
 const args=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(0,i),a.slice(i+1)];}));
 let pool;
 try{
@@ -34,6 +37,12 @@ try{
     const restored=await readDataset(c,false,'operational');
     if(sha256(canonical(restored))!==manifest.snapshotSha256)throw new Error('RESTORED_SNAPSHOT_MISMATCH');
     if(manifest.inventorySha256&&sha256(canonical(inventorySnapshot(await readInventory(c,restored.data),manifest.inventorySnapshotVersion??1)))!==manifest.inventorySha256)throw new Error('RESTORED_INVENTORY_MISMATCH');
+    if(await purchaseInventoryAvailable(c)){
+      if(!manifest.purchaseInventorySha256)throw new Error('PURCHASE_INVENTORY_HASH_REQUIRED');
+      if(sha256(canonical(purchaseInventorySnapshot(await purchaseInventoryView(c,restored.data),manifest.purchaseInventorySnapshotVersion??1)))!==manifest.purchaseInventorySha256)throw new Error('RESTORED_PURCHASE_INVENTORY_MISMATCH');
+    }
+    if(await packAvailable(c)){if(manifest.packInventorySnapshotVersion!==1||!manifest.packInventorySha256||sha256(canonical(await packInventorySnapshot(c)))!==manifest.packInventorySha256)throw new Error('RESTORED_PACK_INVENTORY_MISMATCH');}
+    const payment=await webPaymentSnapshot(c);if(payment.available&&(!manifest.webPaymentSha256||manifest.webPaymentSnapshotVersion!==1||sha256(canonical(payment))!==manifest.webPaymentSha256))throw Error('RESTORED_WEB_PAYMENT_MISMATCH');
     relational=await reconcileRelationalColumns(c,restored.data);if(!relational.equal)throw new Error('RESTORED_RELATIONS_MISMATCH');
     await c.query('ROLLBACK');
   }finally{c.release();}

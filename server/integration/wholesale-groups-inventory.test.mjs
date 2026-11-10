@@ -47,8 +47,9 @@ test('grupos web/móvil, correcciones/desgloses/anulación y conciliación idemp
   await command('inventoryAllocate',{pendingId:pending.id,reason:'Nuevo desglose sintético',allocations:[{productId:1,quantity:7,unit:'litro'},{productId:2,quantity:5,unit:'litro'}]});assert.equal(await stock(1),'92');
   assert.deepEqual(state.data.sales.find(s=>s.id===grouped.id).originalReceipt,grouped.originalReceipt);
   await command('voidSale',grouped.id,{inventoryReturn:'returned',reason:'Retorno físico sintético'});assert.equal(await stock(1),'99');assert.equal(await stock(2),'91');
-  const amounts=calculateItems([{...webRows([[5,1]])[0],entryMode:'amount',requestedAmount:70}]);await web(amounts);assert.equal(await stock(5),'87.25');
-  const periodic=calculateItems([{...webRows([[6,1]])[0],entryMode:'amount',requestedAmount:25}]);await web(periodic);const periodicSale=state.data.sales[0];assert.equal(await stock(6),'100');
+  const amounts=calculateItems([{...webRows([[5,1]])[0],entryMode:'amount',requestedAmount:70}]);await web(amounts);assert.equal(await stock(5),'87.2');
+  const periodicSnapshot=catalog(),periodicChoice=catalogChoices(periodicSnapshot.data).find(c=>c.key==='product:6'),periodicLine=makeLine(periodicChoice,periodicChoice.tariffs[0],'amount','25','periodic');
+  state=await service.command({name:'createMobileSale',args:[requestBody({lines:[periodicLine],payment:'Efectivo'},periodicSnapshot)],revision:state.revision,generation:state.generation,requestKey:randomUUID(),channel:'MOVIL'});const periodicSale=state.data.sales[0];assert.equal(await stock(6),'100');
   await sql(c=>c.query('UPDATE inventory_settings SET sales_enabled=false'));await web(webRows([[7,2]]));
   const oldSnapshot=catalog(),oldChoice=catalogChoices(oldSnapshot.data).find(c=>c.key==='priceGroup:1'),oldLine=makeLine(oldChoice,oldChoice.tariffs[0],'quantity','3','historical-group');
   state=await service.command({name:'createMobileSale',args:[requestBody({lines:[oldLine],payment:'Efectivo'},oldSnapshot)],revision:state.revision,generation:state.generation,requestKey:randomUUID(),channel:'MOVIL'});

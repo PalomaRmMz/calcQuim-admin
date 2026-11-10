@@ -1,3 +1,9 @@
+import {validateWebPhysical} from '../../../src/domain/webSaleCapture.mjs';
+import {checkBaseline} from './inventoryBaseline.mjs';
+import {enablePackInventory,reconcilePack,invalidatePackCorrection,packEnabled,validatePackDefinitions} from '../repositories/packInventory.mjs';
+import {productInitialInventory} from '../../../src/domain/productInitialInventory.mjs';
+export {checkBaseline} from './inventoryBaseline.mjs';
+import {purchaseInventoryCommands,executePurchaseInventory,syncPurchaseInventory,purchaseInventoryAvailable} from './purchaseInventory.mjs';
 import {productActivity,SUPPLIER_ACTIVITIES} from '../../../src/domain/activityScope.mjs';
 import { randomUUID,createHash } from 'node:crypto';
 import { ApiError } from './commands.mjs';
@@ -14,6 +20,7 @@ export function exactSaleQuantity(item, product, origin) {
     if(item.presentationSnapshot)return inventoryConvert(item.baseQuantity,item.baseUnit,product.unit);
     if(product.activity==='JARCERIA'&&item.entryMode==='amount')return null;
     if(item.entryMode!=='amount')return inventoryConvert(item.quantity,item.unit,product.unit);
+    if(origin==='WEB'&&item.webPhysicalQuantity){const physical=validateWebPhysical(item.webPhysicalQuantity,item);return inventoryConvert(physical.quantity,physical.unit,product.unit);}
     let n,d;
     if(item.quantityNumerator&&item.quantityDenominator){n=BigInt(item.quantityNumerator);d=BigInt(item.quantityDenominator);}
     else {const cents=BigInt(Math.round(Number(item.requestedAmount??item.amount)*100)),price=BigInt(Math.round(item.price*100)),percent=BigInt(Math.round((1-(item.discountRate||0))*100));n=cents*100n;d=price*percent;}
@@ -29,21 +36,12 @@ export function exactSaleQuantity(item, product, origin) {
   }catch{return null;}
 }
 
-export const inventoryCommands=['inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase','receivePresentationPurchase','resolveSaleBreakdowns'];
+export const inventoryCommands=[...purchaseInventoryCommands,'configurePackInventory','reconcilePackComposition','inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase','receivePresentationPurchase','resolveSaleBreakdowns'];
 const fail=(message,code='INVENTORY_VALIDATION')=>{throw new ApiError(422,code,message);};
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const findProduct=(data,id)=>{const p=data.products.find(p=>String(p.id)===String(id));if(!p)fail('Selecciona un producto existente.');return p;};
 function reason(input,context){try{return resolveInventoryReason(input,context);}catch(error){fail(error.message,'INVENTORY_REASON_INVALID');}}
 function uuid(value){if(typeof value!=='string'||!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).test(value))fail('Identificador de inventario no válido.');return value;}
-export async function checkBaseline(c,product,event,treatment){
-  const anchor=(await c.query('SELECT m.* FROM inventory_accounts a JOIN inventory_movements m ON m.id=a.anchor_id WHERE a.product_id=$1',[String(product.id)])).rows[0];
-  if(!anchor){if(treatment==='already_included')fail('No existe una estimación en la que incluir este movimiento.');return {};}
-  const day=anchor.recorded_at.toLocaleDateString('en-CA',{timeZone:'America/Mexico_City'});
-  const older=Boolean((event.seq!=null&&BigInt(event.seq)<BigInt(anchor.seq))||(event.date&&event.date<day)||(event.createdAt&&Date.parse(event.createdAt)<anchor.recorded_at.getTime()));
-  if(!older){if(treatment==='already_included')fail('Indica la fecha original anterior a la estimación; no se omite una operación posterior.');return {};}
-  if(!['already_included','apply_now'].includes(treatment))fail('La operación es anterior a la última estimación. Confirma si ya estaba incluida o si debe aplicarse ahora.','INVENTORY_BASELINE_REVIEW_REQUIRED');
-  return {baselineTreatment:treatment,baselineAnchorId:anchor.id,...(treatment==='already_included'?{includedInAnchorId:anchor.id}:{})};
-}
 function quantity(value,from,to){try{return inventoryConvert(value,from,to);}catch(error){fail(error.message);}}
 async function movement(c,data,input,kind){
   const product=findProduct(data,input.productId),unit=normalizeUnit(product.unit);
@@ -53,12 +51,14 @@ async function movement(c,data,input,kind){
   if(kind==='waste'&&scaled>=0n)fail('La merma debe indicarse como cantidad negativa.');
   const occurredAt=kind==='estimate'?new Date().toISOString():input.occurredAt??new Date().toISOString();
   if(typeof occurredAt!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(occurredAt)||!validDate(occurredAt.slice(0,10))||!Number.isFinite(Date.parse(occurredAt)))fail('Fecha de movimiento no válida.');
+  const why=reason(input,kind==='estimate'&&input.reference?.entryType==='physical_count'?'count':kind==='estimate'&&input.reference?.entryType==='initial_inventory'?'initial':movementReasonContext(kind,value,input.reference));
   const baseline=kind!=='estimate'?await checkBaseline(c,product,{createdAt:occurredAt},input.baselineTreatment):{};
   if(kind==='adjustment'&&input.reference?.entryType==='positive_adjustment'&&inventoryDecimal(value)<=0n)fail('La entrada por ajuste positivo debe ser mayor que cero.');
   if(kind==='adjustment'&&input.reference?.entryType==='justified_outflow'&&inventoryDecimal(value)>=0n)fail('La salida justificada debe descontar una cantidad.');
-  const why=reason(input,kind==='estimate'&&input.reference?.entryType==='physical_count'?'count':kind==='estimate'&&input.reference?.entryType==='initial_inventory'?'initial':movementReasonContext(kind,value,input.reference));
   const ref={...(input.reference?{userReference:input.reference}:{}),...baseline,...why.metadata,...(input.reference?.entryType==='initial_inventory'?{classification:'INVENTARIO_INICIAL'}:{})};
+  if(input.packReturnDisposition!=null){if(!['sealed','loose','unknown'].includes(input.packReturnDisposition))fail('Confirma cómo regresó el producto.');ref.packReturnDisposition=input.packReturnDisposition;}
   if(input.purchaseId!=null){
+    if(await purchaseInventoryAvailable(c)&&(await c.query('SELECT 1 FROM purchase_inventory WHERE purchase_id=$1 AND ordinal=$2',[String(input.purchaseId),input.purchaseOrdinal])).rowCount)fail('Esta compra tiene seguimiento autom?tico. Resuelve su rengl?n desde Compras e insumos.');
     const purchase=data.procurement.purchases.find(p=>String(p.id)===String(input.purchaseId));
     if(!purchase||purchase.voidedAt)fail('Selecciona una compra vigente.');
     if(kind!=='receipt')fail('La referencia de compra solo corresponde a recepción confirmada.');
@@ -79,6 +79,8 @@ export async function executeInventoryCommand(c,data,name,args){
   if(!await inventoryAvailable(c))throw new ApiError(503,'INVENTORY_NOT_ENABLED','Inventario pendiente de migración autorizada.');
   if(!Array.isArray(args)||args.length!==1||!args[0]||typeof args[0]!=='object'||Array.isArray(args[0]))fail('Se requiere un formulario de inventario.');
   const input=args[0];
+  if(name==='configurePackInventory'){if(input.approved!==true)fail('Confirma la activación coordinada de paquetes.');await enablePackInventory(c);await inventoryChange(c,'pack_activation',{reason:'Seguimiento físico habilitado sin inferir composición histórica'});return {};}
+  if(purchaseInventoryCommands.includes(name))return executePurchaseInventory(c,data,name,input);
   if(input.activity){
     if(!SUPPLIER_ACTIVITIES.includes(input.activity))fail('Actividad de inventario inválida.');
     const ids=[input.productId,...(input.allocations||[]).map(a=>a.productId),...(input.rows||[]).flatMap(r=>(r.allocations||[]).map(a=>a.productId))].filter(id=>id!=null);
@@ -86,6 +88,7 @@ export async function executeInventoryCommand(c,data,name,args){
     if(name==='inventoryReverse'){const original=(await c.query('SELECT product_id FROM inventory_movements WHERE id=$1',[uuid(input.movementId)])).rows[0];if(original)ids.push(original.product_id);}
     for(const id of ids)if(productActivity(findProduct(data,id))!==input.activity)fail('El artículo no pertenece a esta vista de inventario.');
   }
+  if(name==='reconcilePackComposition'){if(!input.reason?.trim()||input.expectedVersion==null)fail('Indica motivo y versión de la composición que revisaste.');await reconcilePack(c,findProduct(data,input.productId),input.physicalComposition,{reason:input.reason,expectedVersion:input.expectedVersion});return {};}
 
   if(name==='receivePresentationPurchase'){
     const purchase=data.procurement.purchases.find(p=>p.id===input.purchaseId&&!p.voidedAt),item=purchase?.items[input.ordinal],physical=item?.commercialPurchase;
@@ -112,19 +115,32 @@ export async function executeInventoryCommand(c,data,name,args){
     const product=findProduct(data,input.productId),current=(await readInventory(c,data)).products.find(p=>String(p.productId)===String(product.id));
     if(name==='inventoryInitial'){
       if(current.initialMovementId)fail('El inventario inicial ya está registrado. Utiliza Correcciones o un conteo físico.','INITIAL_ALREADY_EXISTS');
-      return movement(c,data,{...input,reasonCode:'initial_inventory',reasonExplanation:'',reference:{entryType:'initial_inventory'}},'estimate');
+      let initial;try{initial=productInitialInventory(input,product,data.procurement.presentations||[]);}catch(e){fail(e.message);}
+      return movement(c,data,{...input,quantity:initial.quantity,unit:initial.unit,reasonCode:'initial_inventory',reasonExplanation:'',reference:{entryType:'initial_inventory',source:initial.source}},'estimate');
     }
     if(!current.initialMovementId)fail('Registra primero el inventario inicial.');
     if(name==='inventoryCount'){
       reason(input,'count');
-      return movement(c,data,{...input,reference:{entryType:'physical_count',previousQuantity:current.quantity}},'estimate');
+      const physical=input.physicalComposition?productInitialInventory(input,product,data.procurement.presentations||[]):null;
+      return movement(c,data,{...input,...(physical?{quantity:physical.quantity,unit:physical.unit}:{}),reference:{entryType:'physical_count',previousQuantity:current.quantity,...(physical?{source:physical.source}:{})}},'estimate');
     }
     if(!current.initialCorrectionAllowed)fail(current.initialCorrectionBlockedReason,'INITIAL_CORRECTION_REVIEW_REQUIRED');
     if(input.initialMovementId!==current.initialMovementId||input.previousQuantity!==current.initialQuantity)fail('El inventario inicial cambió. Recarga antes de corregir.','INITIAL_CORRECTION_STALE');
+    if((input.physicalComposition||input.currentPhysicalComposition)&&!await packEnabled(c))fail('La corrección física requiere el backend de paquetes, la migración 012 y su activación coordinada.');
+    if(input.physicalComposition&&input.expectedPackVersion==null)fail('Revisa la versión de la composición antes de corregir el inicial.');
+    if(input.currentPhysicalComposition&&!input.physicalComposition)fail('Confirma también la composición del inicial corregido.');
     const next=quantity(input.quantity,input.unit,current.unit),delta=inventoryDecimal(next)-inventoryDecimal(current.initialQuantity);
     if(inventoryDecimal(next)<0n||delta===0n)fail('Indica una existencia inicial distinta, mayor o igual que cero.');
     let why;try{why=resolveInventoryReason({...input,reasonCode:'initial_correction',reasonExplanation:''},'initial_correction',{allowLegacy:false});}catch(error){fail(error.message,'INVENTORY_REASON_INVALID');}
     await inventoryChange(c,'initial_correction',{productId:product.id,initialMovementId:current.initialMovementId,originalQuantity:current.initialOriginalQuantity,previousQuantity:current.initialQuantity,nextQuantity:next,difference:inventoryText(delta),previousCurrentQuantity:current.quantity,nextCurrentQuantity:inventoryText(inventoryDecimal(current.quantity)+delta),reason:why.text,...why.metadata});
+    if(await packEnabled(c)){
+      if(input.physicalComposition){
+        const physical=productInitialInventory(input,product,data.procurement.presentations||[]);if(inventoryDecimal(physical.quantity)!==inventoryDecimal(next))fail('La composición corregida no coincide con el inicial propuesto.');
+        const later=(await c.query('SELECT 1 FROM inventory_movements WHERE product_id=$1 AND seq>(SELECT seq FROM inventory_movements WHERE id=$2) LIMIT 1',[String(product.id),current.initialMovementId])).rowCount;
+        if(later&&!input.currentPhysicalComposition)fail('Existen movimientos posteriores: confirma la composición física actual sin reconstruir paquetes.');
+        await reconcilePack(c,product,input.currentPhysicalComposition??input.physicalComposition,{reason:why.text,initialCorrection:true,initialMovementId:current.initialMovementId,previousTotal:current.quantity,initialPhysicalComposition:physical.source.physicalComposition,expectedVersion:input.expectedPackVersion});
+      }else await invalidatePackCorrection(c,product,why.text,current.quantity);
+    }
     return {initialMovementId:current.initialMovementId};
   }
   if(name==='inventoryEstimate')return movement(c,data,input,'estimate');
@@ -146,6 +162,7 @@ export async function executeInventoryCommand(c,data,name,args){
   if(name==='inventoryReverse'){
     const original=(await c.query('SELECT * FROM inventory_movements WHERE id=$1',[uuid(input.movementId)])).rows[0];
     if(!original||['estimate','reversal','sale'].includes(original.kind)||original.reversal_of)fail('Ese movimiento no se revierte por esta acción; una venta requiere confirmar su retorno físico.');
+    if(original.reference?.purchaseLotKey)fail('Utiliza el retiro o corrección del renglón de compra para conservar su trazabilidad.');
     const baseline=await checkBaseline(c,findProduct(data,original.product_id),{seq:original.seq,createdAt:original.occurred_at.toISOString()},input.baselineTreatment);
     const why=reason(input,'reversal');
     const id=await appendInventoryMovement(c,findProduct(data,original.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(original.quantity)),reason:why.text,reversalOf:original.id,reference:{originalMovement:original.id,...baseline,...why.metadata}});
@@ -194,12 +211,20 @@ export async function allocate(c,data,input){
 }
 export async function syncInventory(c,before,data,name,args){
   if(!await inventoryAvailable(c))return;
+  await validatePackDefinitions(c,data);
   // La unidad y los IDs con historia no pueden cambiar silenciosamente.
   const accounts=(await c.query('SELECT product_id,unit FROM inventory_accounts')).rows;
   for(const a of accounts){const p=data.products.find(p=>String(p.id)===a.product_id);if(!p||normalizeUnit(p.unit)!==a.unit)fail('El producto tiene historial o configuración de inventario; conserva su ID y unidad.');}
   if(name==='savePurchase'||name==='voidPurchase'){
-    for(const p of data.procurement.purchases){const old=before.procurement.purchases.find(x=>x.id===p.id);if(old&&digest(old)!==digest(p)&&(await c.query('SELECT 1 FROM inventory_movements WHERE purchase_id=$1 LIMIT 1',[String(p.id)])).rowCount)await inventoryChange(c,'purchase_review_required',{purchaseId:p.id,purchaseFingerprint:digest(p)});}
+    for(const p of data.procurement.purchases){
+      const old=before.procurement.purchases.find(x=>x.id===p.id);
+      if(old&&digest(old)!==digest(p)){
+        const managed=await purchaseInventoryAvailable(c)&&(await c.query('SELECT 1 FROM purchase_inventory WHERE purchase_id=$1 LIMIT 1',[String(p.id)])).rowCount;
+        if(!managed&&(await c.query('SELECT 1 FROM inventory_movements WHERE purchase_id=$1 LIMIT 1',[String(p.id)])).rowCount)await inventoryChange(c,'purchase_review_required',{purchaseId:p.id,purchaseFingerprint:digest(p)});
+      }
+    }
   }
+  await syncPurchaseInventory(c,before,data,name,args);
   if(!(await inventoryPolicy(c)).sales_enabled)return;
   for(const old of before.sales){
     const current=data.sales.find(s=>s.id===old.id);
@@ -211,7 +236,7 @@ export async function syncInventory(c,before,data,name,args){
     const outputs=(await c.query("SELECT m.* FROM inventory_movements m WHERE sale_id=$1 AND kind='sale' AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[sale.id])).rows;
     for(const output of outputs) {
       const baseline=await checkBaseline(c,findProduct(data,output.product_id),{seq:output.seq,createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
-      await appendInventoryMovement(c,findProduct(data,output.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(output.quantity)),reason:args[1].reason,saleId:sale.id,saleOrdinal:output.sale_ordinal,reversalOf:output.id,originKey:'correction-reverse:'+output.id,reference:{commercialVersion:sale.commercialVersion,...baseline}});
+      await appendInventoryMovement(c,findProduct(data,output.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(output.quantity)),reason:args[1].reason,saleId:sale.id,saleOrdinal:output.sale_ordinal,reversalOf:output.id,originKey:'correction-reverse:'+output.id,reference:{packReturnDisposition:args[1].packReturnDisposition,commercialVersion:sale.commercialVersion,...baseline}});
     }
     await c.query("UPDATE inventory_pending SET state='cancelled' WHERE sale_id=$1 AND state IN ('pending','resolved')",[sale.id]);
     for(const [ordinal,item] of sale.items.entries()) {
@@ -221,7 +246,7 @@ export async function syncInventory(c,before,data,name,args){
         const product=findProduct(data,item.productId);
         const baseline=await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
         const physical=exactSaleQuantity(item,product,sale.origin);
-        await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:args[1].reason,saleId:sale.id,saleOrdinal:ordinal,originKey:'correction:'+sale.id+':'+sale.commercialVersion+':'+ordinal,reference:{commercialVersion:sale.commercialVersion,...baseline}});
+        await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:args[1].reason,saleId:sale.id,saleOrdinal:ordinal,originKey:'correction:'+sale.id+':'+sale.commercialVersion+':'+ordinal,reference:{physicalPresentation:item.presentationSnapshot??null,commercialVersion:sale.commercialVersion,...baseline}});
       }
     }
     await inventoryChange(c,'commercial_correction',{saleId:sale.id,version:sale.commercialVersion,channel:'WEB',reason:args[1].reason});
@@ -245,7 +270,7 @@ export async function syncInventory(c,before,data,name,args){
         try{await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date});}catch(error){if(error.code!=='INVENTORY_BASELINE_REVIEW_REQUIRED')throw error;await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'quantity_review'});continue;}
         let physical;
         try{physical=exactSaleQuantity(item,product,sale.origin);}catch{await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'quantity_review'});continue;}
-        await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:'Salida por venta con cantidad física',saleId:sale.id,saleOrdinal:ordinal,originKey:`sale:${sale.id}:${ordinal}`,reference:{folio:sale.folio,quantityEvidence:item.entryMode==='amount'?(sale.origin==='WEB'?'web_amount_rounded_1_decimal':'exact_monetary_conversion'):'captured_quantity',quantityNumerator:item.quantityNumerator??null,quantityDenominator:item.quantityDenominator??null,reasonCode:'sale_known_quantity',reasonCatalogVersion:1,reasonSource:'system'}});
+        await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:'Salida por venta con cantidad física',saleId:sale.id,saleOrdinal:ordinal,originKey:`sale:${sale.id}:${ordinal}`,reference:{physicalPresentation:item.presentationSnapshot??null,...(item.webPhysicalQuantity?{webPhysicalQuantity:item.webPhysicalQuantity}:{}),folio:sale.folio,quantityEvidence:item.entryMode==='amount'?(sale.origin==='WEB'?(item.webPhysicalQuantity?'web_confirmed_quantity_v1':'web_amount_rounded_1_decimal'):'exact_monetary_conversion'):'captured_quantity',quantityNumerator:item.quantityNumerator??null,quantityDenominator:item.quantityDenominator??null,reasonCode:'sale_known_quantity',reasonCatalogVersion:1,reasonSource:'system'}});
       }
     }
   }
@@ -261,13 +286,13 @@ export async function syncInventory(c,before,data,name,args){
         const baseline=await checkBaseline(c,findProduct(data,output.product_id),{seq:output.seq,createdAt:sale.createdAt,date:sale.date},treatment);
         const returned=(await c.query("SELECT 1 FROM inventory_movements WHERE sale_id=$1 AND product_id=$2 AND kind='return' LIMIT 1",[String(sale.id),output.product_id])).rowCount;
         if(returned)fail('Ya hay devoluciones parciales. Registra únicamente el retorno físico restante y anula sin una segunda reposición.');
-        await appendInventoryMovement(c,findProduct(data,output.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(output.quantity)),reason:why.text,saleId:sale.id,saleOrdinal:output.sale_ordinal,reversalOf:output.id,originKey:`void:${output.id}`,reference:{physicalReturnConfirmed:true,...baseline,...why.metadata}});
+        await appendInventoryMovement(c,findProduct(data,output.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(output.quantity)),reason:why.text,saleId:sale.id,saleOrdinal:output.sale_ordinal,reversalOf:output.id,originKey:`void:${output.id}`,reference:{packReturnDisposition:args[1].packReturnDisposition,physicalReturnConfirmed:true,...baseline,...why.metadata}});
       }
     }
     await inventoryChange(c,'sale_void',{saleId:sale.id,physicalDisposition:args[1].inventoryReturn,reason:why.text,...why.metadata});
   }
 }
 export async function addPending(c,sale,ordinal,item,{scope,scopeId,reason}){
-  let quantity=null;if(item.entryMode!=='amount'){try{quantity=inventoryText(inventoryDecimal(item.quantity));}catch{/* Requiere cantidad física confirmada. */}}
+  let quantity=null;if(sale.origin==='WEB'&&item.webPhysicalQuantity){const physical=validateWebPhysical(item.webPhysicalQuantity,item);quantity=inventoryText(inventoryDecimal(physical.quantity));}else if(item.entryMode!=='amount'){try{quantity=inventoryText(inventoryDecimal(item.quantity));}catch{/* Requiere cantidad física confirmada. */}}
   await c.query('INSERT INTO inventory_pending(id,sale_id,ordinal,product_id,scope,scope_id,quantity,unit,reason,fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[randomUUID(),String(sale.id),ordinal,item.productId==null?null:String(item.productId),scope,String(scopeId),quantity,normalizeUnit(item.unit),reason,digest(item)]);
 }

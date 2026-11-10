@@ -1,3 +1,4 @@
+import {webPaymentSnapshot} from '../src/services/webPayment.mjs';
 import { mkdir,open,readFile,writeFile,unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { loadOperationalConfig,requireActivation } from '../src/config/operational.mjs';
@@ -7,7 +8,9 @@ import pg from 'pg';
 import { readDataset } from '../src/repositories/dataset.mjs';
 import { canonical } from '../src/services/dataset.mjs';
 import { sha256 } from '../src/services/reconciliation.mjs';
-import { inventoryAvailable,readInventory } from '../src/repositories/inventory.mjs';
+import {packAvailable,packInventorySnapshot} from '../src/repositories/packInventory.mjs';
+import { inventorySnapshot,inventoryAvailable,readInventory } from '../src/repositories/inventory.mjs';
+import {purchaseInventoryAvailable,purchaseInventoryView,purchaseInventorySnapshot} from '../src/services/purchaseInventory.mjs';
 const directory=new URL('../artifacts/operational/backups/',import.meta.url);
 const lock=new URL('daily.lock',directory);
 let locked=false;
@@ -25,7 +28,10 @@ try {
   const snapshotId=(await client.query('SELECT pg_export_snapshot() AS id')).rows[0].id;
   const snapshot=await readDataset(client,false,'operational');
   const inventory=await inventoryAvailable(client)?await readInventory(client,snapshot.data):null;
-  const result=await createOperationalBackup({directory:fileURLToPath(directory),projectRoot:fileURLToPath(new URL('../../',import.meta.url)),database:config.database.database,policy,reference:{snapshotSha256:sha256(canonical(snapshot)),...(inventory?{inventorySnapshotVersion:3,inventorySha256:sha256(canonical(JSON.parse(JSON.stringify(inventory))))}:{})},
+  const purchaseInventory=await purchaseInventoryAvailable(client)?await purchaseInventoryView(client,snapshot.data):null;
+  const webPayment=await webPaymentSnapshot(client);
+  const physical=await packAvailable(client)?await packInventorySnapshot(client):null;
+  const result=await createOperationalBackup({directory:fileURLToPath(directory),projectRoot:fileURLToPath(new URL('../../',import.meta.url)),database:config.database.database,policy,reference:{...(webPayment.available?{webPaymentSnapshotVersion:1,webPaymentSha256:sha256(canonical(webPayment))}:{}),...(physical?{packInventorySnapshotVersion:1,packInventorySha256:sha256(canonical(physical))}:{}),snapshotSha256:sha256(canonical(snapshot)),...(inventory?{inventorySnapshotVersion:3,inventorySha256:sha256(canonical(inventorySnapshot(inventory,3)))}:{}),...(purchaseInventory?{purchaseInventorySnapshotVersion:1,purchaseInventorySha256:sha256(canonical(purchaseInventorySnapshot(purchaseInventory)))}:{})},
     dump:path=>runPgTool('pg_dump',['--no-owner','--no-acl','--snapshot',snapshotId,'-Fc','-f',path],config.database),verify:verifyPgArchive});
   await writeFile(new URL(`result-${Date.now()}.private.json`,directory),JSON.stringify({code:'BACKUP_OK',createdAt:result.createdAt,secondaryVerified:result.secondaryVerified}),{flag:'wx',mode:0o600});
   console.log('BACKUP_OK: archivo integro, manifiesto SHA-256 y plan de retencion guardados en la carpeta privada.');

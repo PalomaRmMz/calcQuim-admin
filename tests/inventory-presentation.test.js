@@ -33,7 +33,7 @@ test('tabla de inventario reutiliza DataTable y ficha sin cantidad predeterminad
         const modal=renderToString(React.createElement(ThemeProvider,{theme},React.createElement(Modal,{product:rows[2],categories,productLines:lines,view:{initialControlEnabled:true,initialCaptureMode:'automatic',movements:[],changes:[]},data:{sales:[],procurement:{purchases:[]}},onClose(){},onSave(){throw new Error('SSR_NO_WRITES');}})));
         for(const text of ['app-dialog','sale-modal','Sin determinar','Registrar inventario inicial'])assert.ok(modal.includes(text),text);
         assert.match(modal,/<input(?=[^>]*id="inventory-quantity")(?=[^>]*value="")/);
-        assert.ok(!modal.includes('id="inventory-reason"'));assert.ok(!modal.includes('Ficha de inventario'));assert.ok(modal.includes('INVENTARIO_INICIAL'));assert.ok(modal.includes('inventory-observations'));assert.ok(!modal.includes('value="prepared_product"'));
+        assert.ok(!modal.includes('id="inventory-reason"'));assert.ok(modal.includes('Ficha de inventario'));assert.ok(modal.includes('Reposición'));assert.ok(modal.includes('INVENTARIO_INICIAL'));assert.ok(modal.includes('inventory-observations'));assert.ok(!modal.includes('value="prepared_product"'));
         const {default:ReasonFields}=await server.ssrLoadModule('/src/components/InventoryReasonFields.jsx');
         const fields=renderToString(React.createElement(ReasonFields,{context:'prepared',value:{reasonCode:'other',reasonExplanation:'',observations:''},onChange(){}}));
         assert.ok(fields.includes('value="prepared_product"'));assert.ok(!fields.includes('value="physical_count"'));
