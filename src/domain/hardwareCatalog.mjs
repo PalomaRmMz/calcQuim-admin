@@ -1,3 +1,4 @@
+import {hardwareIdentity} from './hardwareCreation.mjs';
 import {normalizeText} from '../utils/catalogUtils.js';
 export function hardwareCategory(data,id){return (data.procurement.hardwareCategories||[]).find(c=>String(c.id)===String(id));}
 export function saveHardwareCategory(data,input){
@@ -16,6 +17,6 @@ export function validateHardwareName(data,input){
  const name=String(input.name??'').trim().replace(/\s+/g,' ');
  if(!name||name.length>200)throw Error('Escribe un nombre de hasta 200 caracteres.');
  const old=data.products.find(p=>String(p.id)===String(input.id));
- if(normalizeText(old?.name)!==normalizeText(name)&&data.products.some(p=>p.activity==='JARCERIA'&&String(p.id)!==String(input.id)&&normalizeText(p.name)===normalizeText(name)))throw Error('Ya existe un producto de jarcería con ese nombre; agrega su presentación al producto existente.');
+ if(normalizeText(old?.name)!==normalizeText(name)&&data.products.some(p=>p.activity==='JARCERIA'&&String(p.id)!==String(input.id)&&hardwareIdentity(p.name)===hardwareIdentity(name)))throw Error('Ya existe un producto de jarcería con ese nombre; agrega su presentación al producto existente.');
  return name;
 }

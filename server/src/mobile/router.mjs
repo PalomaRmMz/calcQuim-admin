@@ -1,3 +1,8 @@
+import {installSalesHistory} from './sales-history-route.mjs';
+import {salesHistoryReader} from './sales-history-policy.mjs';
+import {installHardwareCreation} from './hardware-creation.mjs';
+import { installMobileInventoryRoute } from './inventory-route.mjs';
+import { inventoryOwner, inventoryWritesAuthorized } from './inventory-policy.mjs';
 import {COMMERCE_VERSION} from '../../../src/domain/commerce.mjs';
 import { Router, json } from 'express';
 import { timingSafeEqual } from 'node:crypto';
@@ -34,5 +39,12 @@ export function mobileRouter(service, { mode = 'synthetic', token = '', enabled 
     const s = await service.command({ name: 'createMobileSale', args: [{ ...(body.commerceVersion?{commerceVersion:body.commerceVersion}:{}),payment: body.payment, items: body.items, pricingVersion:body.pricingVersion }], revision: body.revision, generation: body.generation, requestKey: `mobile:${key}`, channel: 'MOVIL' });
     res.json({ receipt: s.result.receipt, inventoryPending:s.inventoryPending.filter(p=>p.saleId===s.result.receipt.id), revision:s.revision, generation:s.generation });
   });
+  // Appended after the existing authentication/body middleware; also used by LAN.
+  installMobileInventoryRoute(r, service, {
+    mode, writeEnabled: mode === 'operational' && inventoryWritesAuthorized && inventoryOwner(token) !== null,
+    principal: mode === 'operational' ? inventoryOwner(token) : null,
+  });
+  installHardwareCreation(r,service,{principal:mode==='operational'?inventoryOwner(token):null});
+  installSalesHistory(r,service,{principal:mode==='operational'?salesHistoryReader(token):null});
   return r;
 }

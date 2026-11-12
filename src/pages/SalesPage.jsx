@@ -1,14 +1,14 @@
 import WebMoneyBreakdown from '../components/WebMoneyBreakdown';
-import {saleCapturedAt,saleLastChangedAt,saleMoment} from '../services/saleAuditView.mjs';
-import {lazy,Suspense} from 'react';
-const MobileSaleCorrection=lazy(()=>import('../components/MobileSaleCorrection')); 
+import { saleCapturedAt, saleLastChangedAt, saleMoment } from '../services/saleAuditView.mjs';
+import { lazy, Suspense } from 'react';
+const MobileSaleCorrection = lazy(() => import('../components/MobileSaleCorrection'));
 import MobileSaleBreakdown from '../components/MobileSaleBreakdown';
 import ModalHeader from "../components/ModalHeader";
 import TableActions from "../components/TableActions";
 import PrimaryAction from "../components/PrimaryAction";
 import ConfirmDialog from "../components/ConfirmDialog";
 import InventoryReasonFields from "../components/InventoryReasonFields";
-import { emptyInventoryReason,inventoryReasonPayload } from "../services/inventoryReasons.js";
+import { emptyInventoryReason, inventoryReasonPayload } from "../services/inventoryReasons.js";
 import EmptyState from "../components/EmptyState";
 import { useContext, useEffect, useRef, useState } from "react";
 import { PersistenceContext } from '../context/PersistenceContext.js';
@@ -28,23 +28,23 @@ import "../styles/components/SaleDetailModal.css";
 import { loadSales, persistSales, createSale, voidSale } from "../services/salesStorage.js";
 import { getBadgeStyle } from "../utils/classificationUtils.js";
 import Feedback from "../components/Feedback";
-import { Link,useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
 export default function SalesPage() {
     const persistence = useContext(PersistenceContext);
-    const [searchParams]=useSearchParams();
-    const requestedFolio=searchParams.get("folio");
+    const [searchParams] = useSearchParams();
+    const requestedFolio = searchParams.get("folio");
     const catalog = useCatalog();
     const { products, categories, productLines } = catalog;
     const [state, setState] = useState(() => {
-        if (persistence) return {sales:[],error:''};
+        if (persistence) return { sales: [], error: '' };
         try { return { ...loadSales(), epoch: localStorage.getItem(STORAGE_KEYS.resetEpoch), error: "" }; }
         catch (error) { return { sales: [], raw: null, error: error.message }; }
     });
     const committed = useRef(state);
     const sales = persistence?.snapshot.data.sales ?? state.sales;
     const [creating, setCreating] = useState(false);
-    const [selectedSnapshot, setSelected] = useState(()=>requestedFolio?sales.find(s=>s.folio===requestedFolio)||null:null);
+    const [selectedSnapshot, setSelected] = useState(() => requestedFolio ? sales.find(s => s.folio === requestedFolio) || null : null);
     const selected = selectedSnapshot
         ? sales.find(sale => sale.id === selectedSnapshot.id) || selectedSnapshot
         : null;
@@ -67,9 +67,9 @@ export default function SalesPage() {
     const sortedDetailGroups = [...detailGroups.values()].sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }) || a.id.localeCompare(b.id));
     for (const group of sortedDetailGroups) group.items.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
     const [deleting, setDeleting] = useState(null);
-    const [physicalReturn,setPhysicalReturn]=useState('');
-    const [voidReason,setVoidReason]=useState(emptyInventoryReason);
-    const [voidBaseline,setVoidBaseline]=useState('');
+    const [physicalReturn, setPhysicalReturn] = useState('');
+    const [voidReason, setVoidReason] = useState(emptyInventoryReason);
+    const [voidBaseline, setVoidBaseline] = useState('');
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
     const [origin, setOrigin] = useState("");
@@ -80,11 +80,11 @@ export default function SalesPage() {
         const timeout = window.setTimeout(() => setNotice(""), 4000);
         return () => window.clearTimeout(timeout);
     }, [notice, sales]);
-    const inventoryPending=persistence?.snapshot.inventoryPending;
-    const pendingCount=sale=>sale.voidedAt?0:Array.isArray(inventoryPending)?inventoryPending.filter(p=>String(p.saleId)===String(sale.id)).length:sale.items.filter((item,n)=>item.pendingBreakdown&&!sale.breakdowns?.[n]).length;
-    const hasPending=sale=>pendingCount(sale)>0;
-    const pendingSales=sales.filter(hasPending);
-    const pendingRows=pendingSales.reduce((sum,sale)=>sum+pendingCount(sale),0);
+    const inventoryPending = persistence?.snapshot.inventoryPending;
+    const pendingCount = sale => sale.voidedAt ? 0 : Array.isArray(inventoryPending) ? inventoryPending.filter(p => String(p.saleId) === String(sale.id)).length : sale.items.filter((item, n) => item.pendingBreakdown && !sale.breakdowns?.[n]).length;
+    const hasPending = sale => pendingCount(sale) > 0;
+    const pendingSales = sales.filter(hasPending);
+    const pendingRows = pendingSales.reduce((sum, sale) => sum + pendingCount(sale), 0);
     const filtered = sales.filter((sale) => (!origin || sale.origin === origin) && (!onlyPending || hasPending(sale)) && (!from || sale.date >= from) && (!to || sale.date <= to));
     const valid = filtered.filter(s => !s.voidedAt);
     const total = valid.reduce((sum, sale) => sum + sale.total, 0);
@@ -104,27 +104,27 @@ export default function SalesPage() {
         } catch (error) { return { ok: false, message: error.message || "No se pudo guardar la venta. Los datos anteriores se conservaron." }; }
     }
     async function saveSale(data) {
-        const result = persistence ? await persistence.command(data.commerceVersion?'createCommercialSale':'createSale',[data]) : commit(sales => createSale(sales, data, catalog, localStorage.getItem(STORAGE_KEYS.salesSequence)));
-        if (result.ok) {const saved=result.snapshot?.data.sales[0];const pending=result.snapshot?.inventoryPending?.some(p=>String(p.saleId)===String(saved?.id));setNotice(pending?'Venta registrada. Inventario pendiente: confirma la cantidad física o el desglose en Inventario.':'Venta registrada correctamente.');}
+        const result = persistence ? await persistence.command(data.commerceVersion ? 'createCommercialSale' : 'createSale', [data]) : commit(sales => createSale(sales, data, catalog, localStorage.getItem(STORAGE_KEYS.salesSequence)));
+        if (result.ok) { const saved = result.snapshot?.data.sales[0]; const pending = result.snapshot?.inventoryPending?.some(p => String(p.saleId) === String(saved?.id)); setNotice(pending ? 'Venta registrada. Inventario pendiente: confirma la cantidad física o el desglose en Inventario.' : 'Venta registrada correctamente.'); }
         return result;
     }
     async function deleteSale() {
         if (!deleting) return { ok: false, message: "Selecciona una venta." };
-        if(persistence?.snapshot.inventoryEnabled&&deleting.items.some(i=>i.lineType!=='service')&&!physicalReturn)return {ok:false,message:'Confirma el destino físico y el motivo de la anulación.'};
-        let metadata={};
-        if(persistence?.snapshot.inventoryEnabled){try{metadata=inventoryReasonPayload(voidReason,'sale_void');}catch(error){return {ok:false,message:error.message};}}
-        const result = persistence ? await persistence.command('voidSale',[deleting.id,...(persistence.snapshot.inventoryEnabled?[{inventoryReturn:physicalReturn,...metadata,baselineTreatment:voidBaseline}]:[])]) : commit(sales => voidSale(sales, deleting.id));
-        if (result.ok) { setSelected(null); setDeleting(null); setPhysicalReturn('');setVoidReason(emptyInventoryReason());setVoidBaseline('');setNotice("Venta anulada; su historial se conserva."); }
+        if (persistence?.snapshot.inventoryEnabled && deleting.items.some(i => i.lineType !== 'service') && !physicalReturn) return { ok: false, message: 'Confirma el destino físico y el motivo de la anulación.' };
+        let metadata = {};
+        if (persistence?.snapshot.inventoryEnabled) { try { metadata = inventoryReasonPayload(voidReason, 'sale_void'); } catch (error) { return { ok: false, message: error.message }; } }
+        const result = persistence ? await persistence.command('voidSale', [deleting.id, ...(persistence.snapshot.inventoryEnabled ? [{ inventoryReturn: physicalReturn, ...metadata, baselineTreatment: voidBaseline }] : [])]) : commit(sales => voidSale(sales, deleting.id));
+        if (result.ok) { setSelected(null); setDeleting(null); setPhysicalReturn(''); setVoidReason(emptyInventoryReason()); setVoidBaseline(''); setNotice("Venta anulada; su historial se conserva."); }
         return result;
     }
     if (state.error) return <><Feedback message={state.error} /><Link to="/administracion/datos">Datos y respaldos</Link></>;
 
     const columns = [
-        { accessorKey: "origin", header: "Origen", Cell: ({ cell }) => ({MOVIL:"Móvil",WEB:"Web"}[cell.getValue()]||"Sin dato histórico") },
-        { id: "breakdown", header: "Desglose de venta", accessorFn: sale => sale.voidedAt?'No aplica':hasPending(sale) ? "Pendiente" : "Completo", Cell:({row})=>hasPending(row.original)?<button className="btn btn-sm btn-warning" onClick={()=>setSelected(row.original)} aria-label={`Completar desglose de ${row.original.folio}`}>Completar desglose ({pendingCount(row.original)})</button>:<span className={row.original.voidedAt?'text-muted':'text-success'}>{row.original.voidedAt?'No aplica':'Completo'}</span> },
+        { accessorKey: "origin", header: "Origen", Cell: ({ cell }) => ({ MOVIL: "Móvil", WEB: "Web" }[cell.getValue()] || "Sin dato histórico") },
+        { id: "breakdown", header: "Desglose de venta", accessorFn: sale => sale.voidedAt ? 'No aplica' : hasPending(sale) ? "Pendiente" : "Completo", Cell: ({ row }) => hasPending(row.original) ? <button className="btn btn-sm btn-warning" onClick={() => setSelected(row.original)} aria-label={`Completar desglose de ${row.original.folio}`}>Completar desglose ({pendingCount(row.original)})</button> : <span className={row.original.voidedAt ? 'text-muted' : 'text-success'}>{row.original.voidedAt ? 'No aplica' : 'Completo'}</span> },
         { accessorKey: "folio", header: "Folio", size: 120 },
-        { accessorKey:"date", header:"Fecha de venta", Cell:({row})=>saleMoment(null,row.original.date) },
-        { id:"lastChangedAt", header:"Última modificación", accessorFn:sale=>saleLastChangedAt(sale)||"", Cell:({row})=>saleMoment(saleLastChangedAt(row.original)) },
+        { accessorKey: "date", header: "Fecha de venta", Cell: ({ row }) => saleMoment(null, row.original.date) },
+        { id: "lastChangedAt", header: "Última modificación", accessorFn: sale => saleLastChangedAt(sale) || "", Cell: ({ row }) => saleMoment(saleLastChangedAt(row.original)) },
         { accessorKey: "payment", header: "Método de pago" },
         { accessorKey: "total", header: "Total", Cell: ({ cell }) => <span className="table-money">{money(cell.getValue())}</span> },
         { id: "status", header: "Estado", accessorFn: sale => sale.voidedAt ? "Anulada" : "Registrada" },
@@ -132,16 +132,16 @@ export default function SalesPage() {
     ];
 
     return <div className="container-fluid px-0">
-        <div className="row g-3 mb-4">
+        {/* <div className="row g-3 mb-4">
             <SummaryCard title="Ventas del período" value={valid.length} icon={faCartShopping} variant="blue" />
             <SummaryCard title="Importe del período" value={money(total)} icon={faDollarSign} variant="green" />
             <SummaryCard title="Venta promedio" value={money(valid.length ? total / valid.length : 0)} icon={faChartColumn} variant="purple" />
             <SummaryCard title="Vendido hoy" value={money(todayTotal)} icon={faCalendarDay} variant="yellow" />
-        </div>
+        </div> */}
         {notice && <div className="alert alert-success" role="status">{notice}</div>}
-        {pendingSales.length>0&&<aside className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2" aria-label="Ventas por desglosar"><div><strong>{pendingSales.length} {pendingSales.length===1?'venta por desglosar':'ventas por desglosar'}</strong><span className="d-block">{pendingRows} {pendingRows===1?'renglón pendiente':'renglones pendientes'} en todo el historial.</span></div><button className="btn btn-warning" onClick={()=>{setOnlyPending(true);setOrigin('');setFrom('');setTo('');}}>Ver ventas pendientes</button><div className="w-100 d-flex flex-wrap gap-2">{pendingSales.map(sale=><button key={sale.id} className="btn btn-sm btn-outline-dark" onClick={()=>setSelected(sale)}>{sale.folio} · {pendingCount(sale)} por completar</button>)}</div></aside>}
+        {pendingSales.length > 0 && <aside className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2" aria-label="Ventas por desglosar"><div><strong>{pendingSales.length} {pendingSales.length === 1 ? 'venta por desglosar' : 'ventas por desglosar'}</strong><span className="d-block">{pendingRows} {pendingRows === 1 ? 'renglón pendiente' : 'renglones pendientes'} en todo el historial.</span></div><button className="btn btn-warning" onClick={() => { setOnlyPending(true); setOrigin(''); setFrom(''); setTo(''); }}>Ver ventas pendientes</button><div className="w-100 d-flex flex-wrap gap-2">{pendingSales.map(sale => <button key={sale.id} className="btn btn-sm btn-outline-dark" onClick={() => setSelected(sale)}>{sale.folio} · {pendingCount(sale)} por completar</button>)}</div></aside>}
         <ContentPanel title="Historial de ventas" subtitle="Consulta tus ventas y registra una nueva operación." action={<PrimaryAction onClick={() => setCreating(true)}>Nueva venta</PrimaryAction>}>
-            <div className="filter-bar"><label>Origen<select className="form-select" value={origin} onChange={e=>setOrigin(e.target.value)}><option value="">Todos</option><option value="MOVIL">Móvil</option><option value="WEB">Web</option></select></label><label><input type="checkbox" checked={onlyPending} onChange={e=>setOnlyPending(e.target.checked)}/> Solo pendientes de desglose</label>
+            <div className="filter-bar"><label>Origen<select className="form-select" value={origin} onChange={e => setOrigin(e.target.value)}><option value="">Todos</option><option value="MOVIL">Móvil</option><option value="WEB">Web</option></select></label><label><input type="checkbox" checked={onlyPending} onChange={e => setOnlyPending(e.target.checked)} /> Solo pendientes de desglose</label>
                 <div><label htmlFor="salesFrom" className="form-label">Desde</label><input id="salesFrom" type="date" className="form-control" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} /></div>
                 <div><label htmlFor="salesTo" className="form-label">Hasta</label><input id="salesTo" type="date" className="form-control" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></div>
                 <button className="btn btn-outline-secondary" onClick={() => { setFrom(""); setTo(""); }}>Limpiar filtros</button>
@@ -150,23 +150,23 @@ export default function SalesPage() {
             {!sales.length && <EmptyState title="Sin ventas">Registra tu primera venta para comenzar.</EmptyState>}
             <DataTable columns={columns} data={filtered} searchPlaceholder="Buscar folio o método de pago..." initialSorting={[{ id: "date", desc: true }]} />
         </ContentPanel>
-        {creating && (persistence?.snapshot.data.procurement.commerceSchema===1?<CommercialSaleForm snapshot={persistence.snapshot} onClose={()=>setCreating(false)} onSave={saveSale}/>:<SaleFormModal inventoryEnabled={!!persistence?.snapshot.inventoryEnabled} onClose={() => setCreating(false)} onSave={saveSale} />)}
-        {deleting && <ConfirmDialog title="Anular venta" confirmText="Anular" onClose={() => {setDeleting(null);setPhysicalReturn('');setVoidReason(emptyInventoryReason());setVoidBaseline('');}} onConfirm={deleteSale}>¿Anular la venta {deleting.folio} por {money(deleting.total)}? Se conservará el historial y se excluirá de los totales.{persistence?.snapshot.inventoryEnabled&&deleting.items.some(i=>i.lineType!=='service')&&<><label className="d-block mt-3">Destino físico<select className="form-select" value={physicalReturn} onChange={e=>setPhysicalReturn(e.target.value)}><option value="">Selecciona explícitamente</option><option value="returned">No salió o regresó físicamente: reponer salida completa</option><option value="not_returned">Permanece fuera, o ya registré la devolución aparte</option></select></label><label className="d-block mt-2">Si la venta es anterior a una estimacion<select className="form-select" value={voidBaseline} onChange={e=>setVoidBaseline(e.target.value)}><option value="">Sin confirmar</option><option value="already_included">El retorno ya estaba incluido: no sumar otra vez</option><option value="apply_now">El retorno debe aplicarse ahora</option></select></label><small className="d-block">Si cada producto requiere un tratamiento distinto, registra las devoluciones por producto en Inventario y anula sin reponer otra vez.</small></>}{persistence?.snapshot.inventoryEnabled&&<InventoryReasonFields context="sale_void" value={voidReason} onChange={setVoidReason} idPrefix="sale-void"/>}</ConfirmDialog>}
+        {creating && (persistence?.snapshot.data.procurement.commerceSchema === 1 ? <CommercialSaleForm snapshot={persistence.snapshot} onClose={() => setCreating(false)} onSave={saveSale} /> : <SaleFormModal inventoryEnabled={!!persistence?.snapshot.inventoryEnabled} onClose={() => setCreating(false)} onSave={saveSale} />)}
+        {deleting && <ConfirmDialog title="Anular venta" confirmText="Anular" onClose={() => { setDeleting(null); setPhysicalReturn(''); setVoidReason(emptyInventoryReason()); setVoidBaseline(''); }} onConfirm={deleteSale}>¿Anular la venta {deleting.folio} por {money(deleting.total)}? Se conservará el historial y se excluirá de los totales.{persistence?.snapshot.inventoryEnabled && deleting.items.some(i => i.lineType !== 'service') && <><label className="d-block mt-3">Destino físico<select className="form-select" value={physicalReturn} onChange={e => setPhysicalReturn(e.target.value)}><option value="">Selecciona explícitamente</option><option value="returned">No salió o regresó físicamente: reponer salida completa</option><option value="not_returned">Permanece fuera, o ya registré la devolución aparte</option></select></label><label className="d-block mt-2">Si la venta es anterior a una estimacion<select className="form-select" value={voidBaseline} onChange={e => setVoidBaseline(e.target.value)}><option value="">Sin confirmar</option><option value="already_included">El retorno ya estaba incluido: no sumar otra vez</option><option value="apply_now">El retorno debe aplicarse ahora</option></select></label><small className="d-block">Si cada producto requiere un tratamiento distinto, registra las devoluciones por producto en Inventario y anula sin reponer otra vez.</small></>}{persistence?.snapshot.inventoryEnabled && <InventoryReasonFields context="sale_void" value={voidReason} onChange={setVoidReason} idPrefix="sale-void" />}</ConfirmDialog>}
         <Dialog className="app-dialog" open={Boolean(selected)} onClose={() => setSelected(null)} fullWidth maxWidth="md" aria-labelledby="sale-detail-title" PaperProps={{ className: "sale-modal" }}>
             <ModalHeader titleId="sale-detail-title" title={`Detalle de venta · ${selected?.folio || ""}`} onClose={() => setSelected(null)} />
             <DialogContent className="sale-modal-body">{selected && <><section className="sale-section">
                 <dl className="sale-detail-meta">
                     <div><dt>Estado</dt><dd>{selected.voidedAt ? "Anulada" : "Registrada"}</dd></div><div><dt>Fecha de venta</dt><dd>{new Date(`${selected.date}T12:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" })}</dd></div>
-                    <div><dt>Método de pago</dt><dd>{selected.payment}</dd></div>{selected.monetarySettlement&&<p>Total revisado: {money(selected.total)}. Cobro confirmado antes de la revisión: {money(selected.monetarySettlement.lastConfirmedCollectedCents/100)}. La liquidación de la diferencia no está registrada.</p>}{selected.monetary&&<div><dt>Política de cobro</dt><dd>{selected.monetary.policyVersion}</dd></div>}{selected.voidMonetary&&<p>Cobro anulado: {money(selected.voidMonetary.lastConfirmedCollectedCents/100)}. La devolución monetaria no está registrada por este sistema.</p>}
+                    <div><dt>Método de pago</dt><dd>{selected.payment}</dd></div>{selected.monetarySettlement && <p>Total revisado: {money(selected.total)}. Cobro confirmado antes de la revisión: {money(selected.monetarySettlement.lastConfirmedCollectedCents / 100)}. La liquidación de la diferencia no está registrada.</p>}{selected.monetary && <div><dt>Política de cobro</dt><dd>{selected.monetary.policyVersion}</dd></div>}{selected.voidMonetary && <p>Cobro anulado: {money(selected.voidMonetary.lastConfirmedCollectedCents / 100)}. La devolución monetaria no está registrada por este sistema.</p>}
                     <div><dt>Fecha de captura</dt><dd>{saleMoment(saleCapturedAt(selected))}</dd></div>
-                    
+
                 </dl>
-                {persistence&&!selected.voidedAt&&<MobileSaleBreakdown key={selected.id} sale={sales.find(s=>s.id===selected.id)||selected} persistence={persistence} products={products}/>}<div className="sale-section-heading"><h3>Productos de la venta</h3><span>{selected.items.length} productos</span></div><div className="table-responsive sale-items"><table className="table align-middle"><thead><tr><th>Producto</th><th>Vender por</th><th>Valor</th><th className="text-end">Importe</th></tr></thead>{sortedDetailGroups.map((group) => <tbody key={group.id}>
+                {persistence && !selected.voidedAt && <MobileSaleBreakdown key={selected.id} sale={sales.find(s => s.id === selected.id) || selected} persistence={persistence} products={products} />}<div className="sale-section-heading"><h3>Productos de la venta</h3><span>{selected.items.length} productos</span></div><div className="table-responsive sale-items"><table className="table align-middle"><thead><tr><th>Producto</th><th>Vender por</th><th>Valor</th><th className="text-end">Importe</th></tr></thead>{sortedDetailGroups.map((group) => <tbody key={group.id}>
                     <tr className="sale-group-heading"><th scope="rowgroup" colSpan={4} style={getBadgeStyle(group.colorId) || { backgroundColor: "#f1f3f5", color: "#6c757d" }}>{group.name}</th></tr>
-                    {group.items.map((item) => <tr key={item.id || item.productId}><td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small></td><td><div className="d-flex flex-nowrap align-items-center gap-3" role="group" aria-label={`Modo de venta de ${item.name}`}>{[{ value: "quantity", label: "Por cantidad" }, { value: "amount", label: "Por monto" }].map((mode) => <label key={mode.value} className="sale-entry-checkbox"><input className="form-check-input" type="checkbox" disabled checked={(item.entryMode || "quantity") === mode.value} /><span>{mode.label}</span></label>)}</div></td><td><div className="input-group flex-nowrap" style={{ width: "max-content" }}><input className="form-control" style={{ width: "calc(5ch + 2.5rem)", flex: "0 0 auto" }} readOnly aria-label={`Valor vendido de ${item.name}`} value={item.entryMode === "amount" ? item.amount : item.quantity} /><span className="input-group-text">{item.entryMode === "amount" ? "MXN" : item.unit}</span></div>{item.entryMode === "amount" && <small className="d-block text-muted">≈ {Number(item.quantity.toFixed(3))} {item.unit}</small>}{item.webPhysicalQuantity&&<small className="d-block">Entregado: {item.webPhysicalQuantity.quantity} {item.webPhysicalQuantity.unit}</small>}</td><td className="text-nowrap text-end">{money(item.amount)}{item.priceTier === "wholesale" && <small className="sale-wholesale">Tarifa de mayoreo</small>}{item.discountRate > 0 && <small className="sale-wholesale" title={`Descuento: ${money(item.discount)}`}>Mayoreo −15%</small>}</td></tr>)}</tbody>)}</table></div>
-                </section>{(selected.origin==='MOVIL'||selected.commerceVersion)&&persistence&&<Suspense fallback={<p role="status">Cargando ticket e historial...</p>}><MobileSaleCorrection sale={sales.find(s=>s.id===selected.id)||selected} persistence={persistence}/></Suspense>} <details className="sale-section"><summary>Historial de modificaciones</summary>{(sales.find(s=>s.id===selected.id)?.history||selected.history||[]).map((h,i)=><p key={i}>{h.at} · {h.channel} · {h.action}{h.monetaryAfter&&<span> · Documento anterior {money(h.monetaryBefore.collectedCents/100)}; revisado {money(h.monetaryAfter.collectedCents/100)}. Liquidación de la diferencia no registrada.</span>}</p>)}</details>{selected.notes && <details className="sale-notes"><summary>Notas de la venta</summary><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{selected.notes}</p></details>}
+                    {group.items.map((item) => <tr key={item.id || item.productId}><td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small></td><td><div className="d-flex flex-nowrap align-items-center gap-3" role="group" aria-label={`Modo de venta de ${item.name}`}>{[{ value: "quantity", label: "Por cantidad" }, { value: "amount", label: "Por monto" }].map((mode) => <label key={mode.value} className="sale-entry-checkbox"><input className="form-check-input" type="checkbox" disabled checked={(item.entryMode || "quantity") === mode.value} /><span>{mode.label}</span></label>)}</div></td><td><div className="input-group flex-nowrap" style={{ width: "max-content" }}><input className="form-control" style={{ width: "calc(5ch + 2.5rem)", flex: "0 0 auto" }} readOnly aria-label={`Valor vendido de ${item.name}`} value={item.entryMode === "amount" ? item.amount : item.quantity} /><span className="input-group-text">{item.entryMode === "amount" ? "MXN" : item.unit}</span></div>{item.entryMode === "amount" && <small className="d-block text-muted">≈ {Number(item.quantity.toFixed(3))} {item.unit}</small>}{item.webPhysicalQuantity && <small className="d-block">Entregado: {item.webPhysicalQuantity.quantity} {item.webPhysicalQuantity.unit}</small>}</td><td className="text-nowrap text-end">{money(item.amount)}{item.priceTier === "wholesale" && <small className="sale-wholesale">Tarifa de mayoreo</small>}{item.discountRate > 0 && <small className="sale-wholesale" title={`Descuento: ${money(item.discount)}`}>Mayoreo −15%</small>}</td></tr>)}</tbody>)}</table></div>
+            </section>{(selected.origin === 'MOVIL' || selected.commerceVersion) && persistence && <Suspense fallback={<p role="status">Cargando ticket e historial...</p>}><MobileSaleCorrection sale={sales.find(s => s.id === selected.id) || selected} persistence={persistence} /></Suspense>} <details className="sale-section"><summary>Historial de modificaciones</summary>{(sales.find(s => s.id === selected.id)?.history || selected.history || []).map((h, i) => <p key={i}>{h.at} · {h.channel} · {h.action}{h.monetaryAfter && <span> · Documento anterior {money(h.monetaryBefore.collectedCents / 100)}; revisado {money(h.monetaryAfter.collectedCents / 100)}. Liquidación de la diferencia no registrada.</span>}</p>)}</details>{selected.notes && <details className="sale-notes"><summary>Notas de la venta</summary><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{selected.notes}</p></details>}
             </>}</DialogContent>
-            <DialogActions className="sale-modal-actions"><div className="sale-footer-total"><span>{selected?.monetarySettlement?'Total revisado':'Total'} · MXN</span><WebMoneyBreakdown monetary={selected?.monetary}/><strong>{money(selected?.total || 0)}</strong></div><Button color="inherit" onClick={() => setSelected(null)}>Cerrar detalle</Button></DialogActions>
+            <DialogActions className="sale-modal-actions"><div className="sale-footer-total"><span>{selected?.monetarySettlement ? 'Total revisado' : 'Total'} · MXN</span><WebMoneyBreakdown monetary={selected?.monetary} /><strong>{money(selected?.total || 0)}</strong></div><Button color="inherit" onClick={() => setSelected(null)}>Cerrar detalle</Button></DialogActions>
         </Dialog>
     </div>;
 }

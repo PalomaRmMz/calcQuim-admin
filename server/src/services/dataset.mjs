@@ -1,3 +1,4 @@
+import {readSalesHistory,readOfficialSale} from '../repositories/salesHistory.mjs';
 import {webPaymentSnapshot,configureWebPayment} from './webPayment.mjs';
 import {purchaseInventoryView} from './purchaseInventory.mjs';
 import {syncProductInitialInventory} from './productInitialInventory.mjs';
@@ -33,10 +34,16 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
     finally {c.release();}
   }
   return {
+    salesHistory:q=>transaction(c=>readSalesHistory(c,q,purpose),true),
+    officialSale:(id,q)=>transaction(c=>readOfficialSale(c,id,q,purpose),true),
     read:()=>transaction(async c=>({...await read(c),...await paymentView(c),inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false}),true),
     purchaseInventory:()=>transaction(async c=>purchaseInventoryView(c,(await read(c)).data),true),
     operations:()=>transaction(async c=>{const snapshot=await read(c);return {data:snapshot.data,revision:snapshot.revision,inventory:await readInventory(c,snapshot.data),purchases:await purchaseInventoryView(c,snapshot.data)};},true),
     inventory:()=>transaction(async c=>readInventory(c,(await read(c)).data),true),
+    inventoryOperationStatus:key=>transaction(async c=>{
+      const row=(await c.query('SELECT request_hash,response FROM idempotency_requests WHERE request_key=$1',[key])).rows[0];
+      return row ? {requestHash:row.request_hash,response:row.response} : null;
+    },true),
     mobileStatus:key=>transaction(async c=>{
       const row=(await c.query('SELECT response FROM idempotency_requests WHERE request_key=$1',['mobile:'+key])).rows[0];
       const snapshot=await read(c);
@@ -66,7 +73,7 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
         catch(error) {if(error instanceof ApiError) throw error; throw new ApiError(422,'DOMAIN_VALIDATION',error.message);}
         if(name==='configureWebPaymentPolicy'){await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true');}
         else if(inventoryCommands.includes(name)) { if(JSON.stringify(before)!==JSON.stringify(current.data))await writeDataset(c,current.data,current.counters); else await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true'); }
-        else {await writeDataset(c,current.data,current.counters);await syncProductInitialInventory(c,before,current.data,name,args);await syncInventory(c,before,current.data,name,args);
+        else {await writeDataset(c,current.data,current.counters);await syncProductInitialInventory(c,before,current.data,name,args,{channel});await syncInventory(c,before,current.data,name,args);
           if(name==='voidSale') {
             const sale=current.data.sales.find(s=>s.id===args[0]);
             sale.history=[...(sale.history||[]),{action:'voided',channel,at:new Date().toISOString()}];
