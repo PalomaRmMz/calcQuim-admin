@@ -36,8 +36,11 @@ function item(row){const r=row.record||{},issues=[];const name=text(r.name);if(!
 const columns=`s.id,s.folio,s.date::text,s.total::text,
  jsonb_build_object('payment',s.record->'payment','origin',s.record->'origin','createdAt',s.record->'createdAt','history',(SELECT COALESCE(jsonb_agg(h),'[]'::jsonb) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(s.record->'history')='array' THEN s.record->'history' ELSE '[]'::jsonb END) h WHERE h->>'action'='created'),'voidedAt',s.record->'voidedAt','monetary',s.record->'monetary') AS record,
  ARRAY(SELECT DISTINCT COALESCE(i.activity,i.record->>'activity') FROM sale_items i WHERE i.sale_id=s.id) AS activities`;
+// Only persisted capture evidence counts. Conflicting creation channels are excluded.
+const creationEvents = "jsonb_array_elements(CASE WHEN jsonb_typeof(s.record->'history')='array' THEN s.record->'history' ELSE '[]'::jsonb END)";
+const mobileCapture = `((s.record->>'origin'='MOVIL' OR ((s.record->>'origin' IS NULL) AND EXISTS (SELECT 1 FROM ${creationEvents} h WHERE h->>'action'='created' AND h->>'channel'='MOVIL'))) AND NOT EXISTS (SELECT 1 FROM ${creationEvents} h WHERE h->>'action'='created' AND h->>'channel'='WEB'))`;
 export async function readSalesHistory(c,q={},purpose='operational'){
- const f=historyFilters(q),s=await state(c,purpose),filterKey=digest({folio:f.folio,from:f.from,to:f.to,limit:f.limit}),where=[],values=[];
+ const f=historyFilters(q),s=await state(c,purpose),filterKey=digest({scope:'verified-mobile-v1',folio:f.folio,from:f.from,to:f.to,limit:f.limit}),where=[mobileCapture],values=[];
  const bind=v=>{values.push(v);return '$'+values.length;};
  if(f.folio)where.push('s.folio='+bind(f.folio));
  if(f.from)where.push('s.date>='+bind(f.from)+'::date');if(f.to)where.push('s.date<='+bind(f.to)+'::date');
@@ -50,7 +53,7 @@ export async function readOfficialSale(c,id,q={},purpose='operational'){
  if(typeof id!=='string'||!id.length||id.length>150||/[\x00-\x1f]/.test(id))fail('INVALID_SALE_ID','Identificador de venta inválido.');
  const f=historyDetailFilters(q),s=await state(c,purpose);if(f.revision!==null)snapshotMatches(f,s);
  let after=-1;if(f.cursor){snapshotMatches(f.cursor,s);if(f.cursor.id!==id||f.cursor.limit!==f.limit||!Number.isSafeInteger(f.cursor.ordinal)||f.cursor.ordinal<0)fail('INVALID_CURSOR','El cursor no corresponde a esta venta.');after=f.cursor.ordinal;}
- const row=(await c.query(`SELECT ${columns},s.record->'originalReceipt' AS original_receipt FROM sales s WHERE s.id=$1`,[id])).rows[0];
+ const row=(await c.query(`SELECT ${columns},s.record->'originalReceipt' AS original_receipt FROM sales s WHERE s.id=$1 AND ${mobileCapture}`,[id])).rows[0];
  if(!row)fail('SALE_NOT_FOUND','La venta no está en este servidor.',404);
  const rows=(await c.query('SELECT ordinal,record,quantity::text,unit,price::text,amount::text,activity FROM sale_items WHERE sale_id=$1 AND ordinal>$2 ORDER BY ordinal LIMIT $3',[id,after,f.limit+1])).rows;
  const count=Number((await c.query('SELECT count(*)::int AS n FROM sale_items WHERE sale_id=$1',[id])).rows[0].n);
