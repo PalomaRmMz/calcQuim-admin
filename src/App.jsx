@@ -30,7 +30,7 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { storageError } = useCatalog();
 
-  if (storageError) return <main className="container py-4"><h1>CalcQuim</h1><Feedback message={storageError} /><Link to="/administracion/datos">Administración de datos: exportar o restablecer</Link></main>;
+  if (storageError) return <main className="container py-4"><h1>Nexo · Administración</h1><Feedback message={storageError} /><Link to="/administracion/datos">Administración de datos: exportar o restablecer</Link></main>;
 
   return (
     <div className="app-layout">
@@ -54,7 +54,7 @@ function App() {
           {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/comercial" element={<Navigate to="/reportes/comerciales" replace/>}/>}
           {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/reportes/comerciales" element={<CommercePage reportOnly/>}/>}
           <Route path="/proveedores" element={<SuppliersPanel/>}/>
-          <Route path="/productos-jarceria" element={<><Header title="Productos de jarcería" subtitle="Administra tu catálogo de CalcQuim" onOpenMenu={() => setMobileMenuOpen(true)} /><HardwareProductsPage/></>}/>
+          <Route path="/productos-jarceria" element={<><Header title="Productos de jarcería" subtitle="Administra tu catálogo de Nexo" onOpenMenu={() => setMobileMenuOpen(true)} /><HardwareProductsPage/></>}/>
           <Route path="/productos-jarceria/categorias" element={<><Header title="Categorías de jarcería" subtitle="Organiza el catálogo de jarcería" onOpenMenu={() => setMobileMenuOpen(true)} /><HardwareCategoriesPage/></>}/>
           <Route path="/lavanderia" element={<LaundryPage/>}/>
           <Route path="/comparadores/limpieza" element={<CleaningScope><ProcurementComparator/></CleaningScope>}/>
@@ -70,7 +70,7 @@ function App() {
           <Route path="/administracion/proveedores" element={<Navigate to="/compras/proveedores" replace />} />
           <Route path="/reportes" element={<><Header title="Reportes" subtitle="Abastecimiento, rendimientos, compras y catálogo" onOpenMenu={() => setMobileMenuOpen(true)} /><ReportsPage /></>} />
           <Route path="*" element={<Navigate to="/productos" replace />} />
-          <Route path="/ventas" element={<><Header title="Ventas" subtitle="Registra y consulta las ventas de CalcQuim" onOpenMenu={() => setMobileMenuOpen(true)} /><SalesPage /></>} />
+          <Route path="/ventas" element={<><Header title="Ventas" subtitle="Registra y consulta las ventas de Nexo" onOpenMenu={() => setMobileMenuOpen(true)} /><SalesPage /></>} />
 
           <Route
             path="/productos/:section?"
@@ -78,7 +78,7 @@ function App() {
               <>
                 <Header
                   title={sectionTitles[pathname] || 'Productos de limpieza'}
-                  subtitle="Administra tu catálogo de CalcQuim"
+                  subtitle="Administra tu catálogo de Nexo"
                   onOpenMenu={() => setMobileMenuOpen(true)}
                 />
                 <CleaningScope><ProductsModule /></CleaningScope>

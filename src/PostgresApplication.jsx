@@ -29,11 +29,11 @@ function ConnectedApplication({ operational=false }) {
         return ()=>{active=false;};
     },[client]);
     useEffect(()=>{const timer=setInterval(()=>setToday(localDate()),60000);return()=>clearInterval(timer);},[]);
-    if (!snapshot) return <main className="container py-5"><h1>{operational?'CalcQuim · PostgreSQL local':'PostgreSQL de ensayo'}</h1><p role="status">{error || 'Consultando servidor local…'}</p><button onClick={()=>window.location.reload()}>Reintentar</button></main>;
+    if (!snapshot) return <main className="container py-5"><h1>{operational?'Nexo · Administración':'PostgreSQL de ensayo'}</h1><p role="status">{error || 'Consultando servidor local…'}</p><button onClick={()=>window.location.reload()}>Reintentar</button></main>;
     async function refreshData(){
         if(refreshing)return;setRefreshing(true);
-        try{setSnapshot(await client.read());setError('');}
-        catch{setError('No se pudieron actualizar los datos. Reintenta cuando el servidor este disponible.');}
+        try{const next=await client.read();setSnapshot(next);setError('');return {ok:true,snapshot:next};}
+        catch{const message='No se pudieron actualizar los datos. Reintenta cuando el servidor este disponible.';setError(message);return {ok:false,message};}
         finally{setRefreshing(false);}
     }
     const data=snapshot.data;
@@ -53,7 +53,7 @@ function ConnectedApplication({ operational=false }) {
     const catalog={...data,wholesalePricing:wholesaleSettings(data),...actions(catalogNames),storageError:'',assertCatalogCurrent:()=>{},getDisplayName:p=>getProductDisplayName(p,data.categories,data.productLines),getProductPrice:p=>catalogProductPrice(p,data.priceGroups,Boolean(wholesaleSettings(data))),isProductAvailable:p=>p.available??true};
     const procurement={data:data.procurement,error:'',...actions(procurementNames),analytics:procurementAnalytics(data.procurement,products,today),integrityIssues:supplyModelIssues(data.procurement,products),saveSupplyBatch:()=>({ok:false,message:'El modelo actual utiliza Configurar productos por lote.'})};
     const administration=pathname.startsWith('/administracion')||pathname==='/datos';
-    return <PersistenceContext.Provider value={{snapshot,command,exportSnapshot}}><CatalogContext.Provider value={catalog}><ProcurementContext.Provider value={procurement}>
+    return <PersistenceContext.Provider value={{snapshot,command,refresh:refreshData,exportSnapshot}}><CatalogContext.Provider value={catalog}><ProcurementContext.Provider value={procurement}>
         <aside role="status" className="alert alert-info mb-0">{operational?'PostgreSQL local · Guardado exclusivo en el servidor.':'PostgreSQL de ensayo · Datos sintéticos · El almacenamiento habitual del navegador permanece separado.'} <Link to="/administracion/datos">Respaldos</Link> · <button className="btn btn-sm btn-outline-secondary" disabled={refreshing} onClick={refreshData}>{refreshing?'Actualizando...':'Actualizar datos'}</button></aside>
         {error&&<p role="alert" className="alert alert-danger">{error}</p>}
         {administration?<main className="container py-4"><h1>{operational?'Respaldos PostgreSQL':'Datos de ensayo PostgreSQL'}</h1><p>{operational?'Descarga una copia lógica o exporta a Excel. El respaldo completo y la restauración se realizan con las herramientas privadas del servidor.':'La restauración se ensaya en un esquema independiente mediante las herramientas del servidor.'}</p><button onClick={download}>Descargar copia lógica</button><ExportExcelButton/><Link to="/productos">Volver a Productos</Link></main>:<App/>}
@@ -61,5 +61,5 @@ function ConnectedApplication({ operational=false }) {
 }
 export default function PostgresApplication({ operational=false }) {
     const [accepted,setAccepted]=useState(false);
-    return operational||accepted?<ConnectedApplication operational={operational}/>:<main className="container py-5"><h1>CalcQuim · PostgreSQL de ensayo</h1><p>Este modo utiliza una base local con datos sintéticos. No carga, importa ni sustituye los datos de tu navegador habitual.</p><button className="btn btn-primary" onClick={()=>setAccepted(true)}>Abrir entorno PostgreSQL de ensayo</button></main>;
+    return operational||accepted?<ConnectedApplication operational={operational}/>:<main className="container py-5"><h1>Nexo · Administración · QA</h1><p>Este modo utiliza una base local con datos sintéticos. No carga, importa ni sustituye los datos de tu navegador habitual.</p><button className="btn btn-primary" onClick={()=>setAccepted(true)}>Abrir entorno PostgreSQL de ensayo</button></main>;
 }

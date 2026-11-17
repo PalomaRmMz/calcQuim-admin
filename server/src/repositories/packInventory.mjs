@@ -65,7 +65,8 @@ async function applyPackMovement(c,product,input,movementId){
   if(delta<0n){
    if(input.kind==='sale'&&isPack){if(!before.known)fail('La composición física es desconocida: concilia los paquetes cerrados desde Inventarios.');if(quantity%whole(row.factor))fail('Cantidad de paquete no representable.');after=consumeClosed(before,String(quantity/whole(row.factor)));action='sale_package';}
    else if(before.known&&(isUnit||input.kind==='sale'&&!isPack||input.reference?.packOutflowDisposition==='units')){
-    const result=consumeUnits(before,String(quantity));if(result.opened!=='0')await event(c,product,movementId,'automatic_open',before,result.afterOpen,{openedPackages:result.opened,factor:before.factor,reason:'Apertura automática para atender unidades sueltas; sin movimiento base adicional'});
+    if(input.kind==='sale'&&!entry.definitionsList.some(p=>p.active&&p.saleEnabled!==false&&p.unit==='pieza'&&Number(p.factor)===1))fail('Este producto no permite venta individual.');
+    const result=consumeUnits(before,String(quantity));if(product.autoOpenPackages===false&&result.opened!=='0')fail('La apertura autom�tica no est� habilitada para este producto.');if(result.opened!=='0')await event(c,product,movementId,'automatic_open',before,result.afterOpen,{openedPackages:result.opened,factor:before.factor,reason:'Apertura automática para atender unidades sueltas; sin movimiento base adicional'});
     after=result.after;action=input.kind==='sale'?'sale_units':'outflow_units';
    }else if(before.known&&isPack){if(quantity%whole(row.factor))fail('Confirma la composición física del retiro parcial.');after=consumeClosed(before,String(quantity/whole(row.factor)));action='outflow_packages';}
    else after=unknown(row,nextTotal);

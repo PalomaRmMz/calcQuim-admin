@@ -10,7 +10,7 @@ export function productInitialPayload(draft,unit,presentations=[]){
 }
 export default function InitialInventoryFields({value,onChange,unit,presentations=[]}){
  const id=useId(),base=UNITS.find(u=>u.id===normalizeUnit(unit)),units=UNITS.filter(u=>u.dimension===base?.dimension),options=presentations.filter(p=>p.active!==false);
- const packs=unit==='pieza'&&options.some(p=>p.unit==='pieza'&&Number(p.factor)===1)?options.filter(p=>p.unit==='paquete'&&Number(p.factor)>1):[];
+ const packs=unit==='pieza'?options.filter(p=>p.unit==='paquete'&&Number(p.factor)>1):[];
  const change=patch=>onChange({...value,...patch});
  let preview='',error='';
  if(value.enabled&&(value.quantity!==''||value.composition?.enabled))try{const product={id:'new',unit},converted=productInitialInventory(productInitialPayload(value,unit,options),product,options.map(p=>({...p,productId:'new',baseUnit:unit})));preview=`Inicial que se registrará: ${converted.quantity} ${unitLabel(unit)}`;}catch(e){error=e.message;}

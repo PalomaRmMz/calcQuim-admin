@@ -13,7 +13,7 @@ import App from "./App";
 function AdministrationLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const [mobile, setMobile] = useState(false);
-    return <div className="app-layout">{mobile && <div className="sidebar-overlay" onClick={() => setMobile(false)} aria-hidden="true" />}<Sidebar activeModule="/administracion" collapsed={collapsed} setCollapsed={setCollapsed} mobileMenuOpen={mobile} setMobileMenuOpen={setMobile} /><main className={`main-content ${collapsed ? "main-content-expanded" : ""}`}><Header title="Datos y respaldos" subtitle="Administración de datos de CalcQuim" onOpenMenu={() => setMobile(true)} /><DataManagementPage /></main></div>;
+    return <div className="app-layout">{mobile && <div className="sidebar-overlay" onClick={() => setMobile(false)} aria-hidden="true" />}<Sidebar activeModule="/administracion" collapsed={collapsed} setCollapsed={setCollapsed} mobileMenuOpen={mobile} setMobileMenuOpen={setMobile} /><main className={`main-content ${collapsed ? "main-content-expanded" : ""}`}><Header title="Datos y respaldos" subtitle="Administración de datos de Nexo" onOpenMenu={() => setMobile(true)} /><DataManagementPage /></main></div>;
 }
 
 export default function ApplicationRoot() {
@@ -25,10 +25,10 @@ export default function ApplicationRoot() {
     function resetData(confirmation) {
         try {
             const generation = resetCalcQuimData(confirmation);
-            setRuntime({ generation, notice: "Todos los datos se eliminaron. CalcQuim está listo para comenzar de cero.", error: "" });
+            setRuntime({ generation, notice: "Todos los datos se eliminaron. Nexo está listo para comenzar de cero.", error: "" });
             return { ok: true };
         } catch (error) {
-            const message = `No se pudo completar el restablecimiento: ${error.message} Si ya comenzó, se completará al volver a abrir CalcQuim o al reintentar.`;
+            const message = `No se pudo completar el restablecimiento: ${error.message} Si ya comenzó, se completará al volver a abrir Nexo o al reintentar.`;
             setRuntime(current => ({ ...current, error: message }));
             return { ok: false, message };
         }

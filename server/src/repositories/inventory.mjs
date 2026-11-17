@@ -1,5 +1,6 @@
+import {ApiError} from '../services/commands.mjs';
 import { randomUUID } from 'node:crypto';
-import {syncPackMovement,readPackInventory} from './packInventory.mjs';
+import {syncPackMovement,readPackInventory,baseStock} from './packInventory.mjs';
 import { normalizeUnit } from '../../../src/utils/units.js';
 import { inventoryDecimal,inventoryText } from '../../../src/services/inventoryUnits.js';
 // El hash de respaldos anteriores no incluía los campos derivados del inventario inicial.
@@ -27,6 +28,7 @@ export async function inventoryAccount(c,product){
 }
 export async function appendInventoryMovement(c,product,input){
   await inventoryAccount(c,product);
+  if(product.enforceStock&&input.kind==='sale'){const stock=await baseStock(c,product.id);if(stock==null||inventoryDecimal(stock)+inventoryDecimal(input.quantity)<0n)throw new ApiError(422,'INSUFFICIENT_STOCK','Existencias insuficientes o inventario inicial desconocido.');}
   const id=randomUUID();
   await syncPackMovement(c,product,input,id);
   const fields={id,product_id:String(product.id),kind:input.kind,quantity:input.quantity,unit:normalizeUnit(product.unit),certainty:input.certainty??'confirmed',reason:input.reason,occurred_at:input.occurredAt??new Date().toISOString(),purchase_id:input.purchaseId??null,sale_id:input.saleId??null,sale_ordinal:input.saleOrdinal??null,reversal_of:input.reversalOf??null,origin_key:input.originKey??null,reference:JSON.stringify(input.reference??{})};

@@ -37,8 +37,9 @@ export function correctMobileSale(sales, id, input) {
   if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 1000) throw new Error('Escribe el motivo de corrección (máximo 1000 caracteres).');
   if (previous.items.some(i=>i.lineType!=='service') && input.physicalTreatment !== 'apply_difference') throw new Error('Confirma la aplicación de la diferencia física de esta revisión.');
   if (!Array.isArray(input.values) || input.values.length !== previous.items.length) throw new Error('La corrección conserva los renglones y sus referencias originales.');
+  if(input.serviceOptions!=null&&(!Array.isArray(input.serviceOptions)||input.serviceOptions.length!==previous.items.length||input.serviceOptions.some(o=>o!=null&&(typeof o!=='object'||Array.isArray(o)||Object.keys(o).some(k=>!['addons','description'].includes(k))))))throw Error('Opciones de servicio inválidas.');
   const corrected = previous.items.map((old, ordinal) => {
-    if(old.commerceVersion)return historicalCommerceLine(old,input.values[ordinal]);
+    if(old.commerceVersion)return historicalCommerceLine(old,input.values[ordinal],input.serviceOptions?.[ordinal]||{});
     const tariff = { key: old.tariffKey, price: old.normalPrice ?? old.price, unit: old.unit, productIds: old.eligibleProductIds, ...(old.pricingVersion===WHOLESALE_VERSION?{pricingVersion:old.pricingVersion,wholesalePrice:old.wholesalePrice,amountPolicy:old.amountPolicy,priceSource:old.priceSource,priceSourceId:old.priceSourceId}: {}) };
     const choice = { kind: old.reference.kind, refId: old.reference.id, name: old.name, context: old.context, tariffs: [tariff] };
     const updated = { ...old, ...makeLine(choice, tariff, old.entryMode, input.values[ordinal], old.id,input.confirmedQuantities?.[ordinal]??(String(input.values[ordinal])===String(old.capturedValue)?old.confirmedQuantity:null)) };
@@ -48,8 +49,8 @@ export function correctMobileSale(sales, id, input) {
   const items = corrected.some(row=>row.pricingVersion===WHOLESALE_VERSION)?repriceLines(corrected):corrected;
   const at = new Date().toISOString(), version = (previous.commercialVersion || 1) + 1;
   const updated = { ...previous, items, total: total(items), commercialVersion: version, breakdowns: {},
-    revisions: [...(previous.revisions || []), { at, channel: 'WEB', reason: input.reason.trim(), version: version - 1, id: previous.id, date: previous.date, payment: previous.payment, origin: previous.origin, items: previous.items, total: previous.total, breakdowns: previous.breakdowns || {} }],
-    history: [...previous.history, { action: 'commercial_correction', channel: 'WEB', at, reason: input.reason.trim(), version }],
+    revisions: [...(previous.revisions || []), { at, channel: input.auditChannel==='MOVIL'?'MOVIL':'WEB', reason: input.reason.trim(), version: version - 1, id: previous.id, date: previous.date, payment: previous.payment, origin: previous.origin, items: previous.items, total: previous.total, breakdowns: previous.breakdowns || {} }],
+    history: [...previous.history, { action: 'commercial_correction', channel: input.auditChannel==='MOVIL'?'MOVIL':'WEB', at, reason: input.reason.trim(), version }],
   };
   updated.updatedReceipt = { ...previous.originalReceipt, createdAt: at, version, corrected: true, total: updated.total, items: items.map(receiptItem) };
   if (JSON.stringify(items) === JSON.stringify(previous.items)) throw new Error('No hay cambios comerciales.');
@@ -58,5 +59,5 @@ export function correctMobileSale(sales, id, input) {
 
 function receiptItem(item) {
   const {name,quantity,unit,price,amount,entryMode,discountRate}=item;
-  return {name,quantity,unit,price,amount,entryMode,discountRate,...(item.commerceVersion?{commerceVersion:item.commerceVersion,activity:item.activity,lineType:item.lineType,presentationSnapshot:item.presentationSnapshot,baseQuantity:item.baseQuantity,baseUnit:item.baseUnit,addons:item.addons,description:item.description,...(item.laundryPricingSnapshot?{laundryPricingSnapshot:item.laundryPricingSnapshot}:{})}:{}),...(item.pricingVersion===WHOLESALE_VERSION?{pricingVersion:item.pricingVersion,priceTier:item.priceTier,normalPrice:item.normalPrice,wholesalePrice:item.wholesalePrice,amountPolicy:item.amountPolicy,confirmedQuantity:item.confirmedQuantity,quantityNumerator:item.quantityNumerator,quantityDenominator:item.quantityDenominator}: {})};
+  return {name,...(item.activity==='JARCERIA'&&item.context?{productName:item.context.replace(/^Jarcería · /,'')}:{}),quantity,unit,price,amount,entryMode,discountRate,...(item.commerceVersion?{commerceVersion:item.commerceVersion,activity:item.activity,lineType:item.lineType,presentationSnapshot:item.presentationSnapshot,baseQuantity:item.baseQuantity,baseUnit:item.baseUnit,addons:item.addons,description:item.description,...(item.laundryPricingSnapshot?{laundryPricingSnapshot:item.laundryPricingSnapshot}:{})}:{}),...(item.pricingVersion===WHOLESALE_VERSION?{pricingVersion:item.pricingVersion,priceTier:item.priceTier,normalPrice:item.normalPrice,wholesalePrice:item.wholesalePrice,amountPolicy:item.amountPolicy,confirmedQuantity:item.confirmedQuantity,quantityNumerator:item.quantityNumerator,quantityDenominator:item.quantityDenominator}: {})};
 }

@@ -1,3 +1,4 @@
+import {reportedCollection} from '../../../src/domain/reportPayment.mjs';
 import {createHash} from 'node:crypto';
 import {ApiError} from '../services/commands.mjs';
 import {saleCapturedAt} from '../../../src/services/saleAuditView.mjs';
@@ -30,11 +31,12 @@ function header(row){
  const recordedAt=saleCapturedAt(r);if(!recordedAt)issues.push('Hora de captura no registrada');
  const activities=(row.activities||[]).filter(v=>['LIMPIEZA','JARCERIA','LAVANDERIA'].includes(v));
  const monetary=r.monetary&&['calculatedCents','roundingCents','collectedCents'].every(k=>Number.isSafeInteger(r.monetary[k]))?Object.fromEntries(['calculatedCents','roundingCents','collectedCents'].map(k=>[k,r.monetary[k]])):null;
- return {id:row.id,folio:row.folio??null,date:row.date,total:row.total,payment:text(r.payment),capturedAt:recordedAt,captureOrigin,activities,voidedAt:text(r.voidedAt),monetary,partial:issues.length>0,issues};
+ const collectionEvidence=reportedCollection({...r,total:Number(row.total)});const collection={confirmedCents:Number.isSafeInteger(collectionEvidence.confirmed)?collectionEvidence.confirmed:null,collectedCents:Number.isSafeInteger(collectionEvidence.collected)?collectionEvidence.collected:null,status:collectionEvidence.status};
+ return {collection,id:row.id,folio:row.folio??null,date:row.date,total:row.total,payment:text(r.payment),capturedAt:recordedAt,captureOrigin,activities,voidedAt:text(r.voidedAt),monetary,partial:issues.length>0,issues};
 }
 function item(row){const r=row.record||{},issues=[];const name=text(r.name);if(!name)issues.push('Nombre histórico no registrado');return {ordinal:row.ordinal,name,quantity:decimal(r.quantity)??row.quantity,unit:text(r.unit)??row.unit,price:decimal(r.price)??row.price,amount:decimal(r.amount)??row.amount,activity:['LIMPIEZA','JARCERIA','LAVANDERIA'].includes(r.activity)?r.activity:row.activity??null,presentationName:text(r.presentationSnapshot?.name)||text(r.serviceSnapshot?.name),partial:issues.length>0,issues};}
 const columns=`s.id,s.folio,s.date::text,s.total::text,
- jsonb_build_object('payment',s.record->'payment','origin',s.record->'origin','createdAt',s.record->'createdAt','history',(SELECT COALESCE(jsonb_agg(h),'[]'::jsonb) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(s.record->'history')='array' THEN s.record->'history' ELSE '[]'::jsonb END) h WHERE h->>'action'='created'),'voidedAt',s.record->'voidedAt','monetary',s.record->'monetary') AS record,
+ jsonb_build_object('payment',s.record->'payment','origin',s.record->'origin','createdAt',s.record->'createdAt','history',(SELECT COALESCE(jsonb_agg(h),'[]'::jsonb) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(s.record->'history')='array' THEN s.record->'history' ELSE '[]'::jsonb END) h WHERE h->>'action'='created'),'voidedAt',s.record->'voidedAt','monetary',s.record->'monetary','monetarySettlement',s.record->'monetarySettlement','commercialVersion',s.record->'commercialVersion','originalReceipt',jsonb_build_object('total',s.record->'originalReceipt'->'total')) AS record,
  ARRAY(SELECT DISTINCT COALESCE(i.activity,i.record->>'activity') FROM sale_items i WHERE i.sale_id=s.id) AS activities`;
 // Only persisted capture evidence counts. Conflicting creation channels are excluded.
 const creationEvents = "jsonb_array_elements(CASE WHEN jsonb_typeof(s.record->'history')='array' THEN s.record->'history' ELSE '[]'::jsonb END)";

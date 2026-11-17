@@ -148,7 +148,7 @@ export async function executePurchaseInventory(c,data,name,input){
 }
 export async function syncPurchaseInventory(c,before,data,name,args){
  if(!await purchaseInventoryAvailable(c)||!(await purchaseAutomationPolicy(c)).enabled)return;
- if(!['savePurchase','savePresentationPurchase','voidPurchase'].includes(name))return;
+ if(!['savePurchase','savePresentationPurchase','correctPresentationPurchase','voidPurchase'].includes(name))return;
  for(const purchase of data.procurement.purchases){
   const old=before.procurement.purchases.find(p=>p.id===purchase.id);
   if(old&&JSON.stringify(old)===JSON.stringify(purchase))continue;

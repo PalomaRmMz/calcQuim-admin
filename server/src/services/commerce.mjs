@@ -24,8 +24,8 @@ export function saveCommerce(data,name,input){
  }
  if(name==='saveHardwareProductBundle'){
    if(!Array.isArray(input.presentations)||(!input.presentations.length&&!(input.product?.pricePending===true&&input.product?.available===false)))throw Error('Agrega una presentación con precio o marca el producto no disponible con precio pendiente.');
-   if(input.product?.pricePending===true&&(input.product.available!==false||input.presentations.length))throw Error('Un precio pendiente no puede tener presentaciones de venta habilitadas.');
-   if(input.product?.id==null&&input.presentations.some(p=>typeof p.price!=='number'||!Number.isFinite(p.price)||p.price<=0))throw Error('Confirma un precio positivo para cada presentación de venta.');
+   if(input.product?.pricePending===true&&(input.product.available!==false))throw Error('Un precio pendiente no puede tener presentaciones de venta habilitadas.');
+   if(!input.product?.pricePending&&input.product?.id==null&&input.presentations.some(p=>p.saleEnabled!==false&&(typeof p.price!=='number'||!Number.isFinite(p.price)||p.price<=0)))throw Error('Confirma un precio positivo para cada presentación de venta.');
    const next=structuredClone(data),result=saveCommerce(next,'saveCommerceProduct',input.product);
    const existing=(data.procurement.presentations||[]).filter(p=>sameId(p.productId,result.id));
    if(existing.some(p=>!input.presentations.some(r=>r.id===p.id)))throw Error('Conserva las presentaciones anteriores; puedes desactivarlas.');
@@ -40,6 +40,7 @@ export function saveCommerce(data,name,input){
    Object.assign(data,next);return result;
  }
  if(name==='saveCommerceProduct'){
+   if(['autoOpenPackages','pricePending'].some(k=>input[k]!==undefined&&typeof input[k]!=='boolean'))throw Error('Confirma las opciones del producto.');
    if(!input.name?.trim()||!['pieza','kg','gramo','bolsa','envase','botella'].includes(input.unit))throw Error('Nombre y unidad base requeridos.');
    const old=data.products.find(p=>sameId(p.id,input.id));if(old&&old.activity!=='JARCERIA')throw Error('Conserva el artículo histórico de limpieza.');
    if(old&&old.unit!==input.unit)throw Error('Conserva la unidad base; crea otro artículo si es distinto.');
@@ -49,6 +50,7 @@ export function saveCommerce(data,name,input){
    const row={...old,id,hardwareCategoryId,name:validateHardwareName(data,input),unit:input.unit,activity:'JARCERIA',price:null,priceGroupId:null,categoryId:input.categoryId??old?.categoryId??null,lineId:null,active:input.active!==false,available:input.available??old?.available??true,externalKey:input.externalKey??old?.externalKey??null};
    row.creationAudit=input.creationAudit??old?.creationAudit??null;
    row.pricePending=input.pricePending===true;
+   row.enforceStock=old?old.enforceStock??false:true;row.autoOpenPackages=input.autoOpenPackages??old?.autoOpenPackages;
    row.characteristics=String(input.characteristics??old?.characteristics??'').trim().slice(0,1000);
    data.products=old?data.products.map(p=>p.id===old.id?row:p):[...data.products,row];return {ok:true,id};
  }
@@ -56,7 +58,7 @@ export function saveCommerce(data,name,input){
  const row={...input,id,name:String(input.name??'').trim().replace(/\s+/g,' '),active:input.active!==false};
  if(field==='presentations'&&rows.some(p=>p.id!==id&&sameId(p.productId,input.productId)&&normalizeText(p.name)===normalizeText(row.name)))throw Error('Ya existe esa presentación del producto.');
  if(field==='presentations'){const product=data.products.find(p=>sameId(p.id,row.productId));row.productId=product?.id;row.baseUnit=product?.unit;row.priceHistory=[...(old?.priceHistory||[]),...(old&&(old.price!==row.price||old.factor!==row.factor)?[{at:new Date().toISOString(),price:old.price,factor:old.factor,unit:old.unit}]:[])];validatePresentation(row,data.products);if(old&&!sameId(old.productId,row.productId))throw Error('Conserva la identidad física de la presentación.');}
- else {validateService(row);row.tariffHistory=[...(old?.tariffHistory||[]),...(old&&JSON.stringify([old.price,old.addons,old.loadPricing,old.descriptionRequired])!==JSON.stringify([row.price,row.addons,row.loadPricing,row.descriptionRequired])?[{at:new Date().toISOString(),price:old.price,priceMode:old.priceMode,addons:old.addons||[],...(old.loadPricing?{loadPricing:old.loadPricing}:{}),...(old.descriptionRequired?{descriptionRequired:true}:{})}]:[])];}
+ else {validateService(row);const configuration=s=>Object.fromEntries(['name','unit','priceMode','price','active','addons','loadPricing','descriptionRequired'].map(k=>[k,s[k]??null]));row.configurationHistory=[...(old?.configurationHistory||[]),...(old&&JSON.stringify(configuration(old))!==JSON.stringify(configuration(row))?[{at:new Date().toISOString(),before:configuration(old),after:configuration(row)}]:[])];row.tariffHistory=[...(old?.tariffHistory||[]),...(old&&JSON.stringify([old.price,old.addons,old.loadPricing,old.descriptionRequired,old.priceMode,old.unit])!==JSON.stringify([row.price,row.addons,row.loadPricing,row.descriptionRequired,row.priceMode,row.unit])?[{at:new Date().toISOString(),price:old.price,priceMode:old.priceMode,addons:old.addons||[],...(old.loadPricing?{loadPricing:old.loadPricing}:{}),...(old.descriptionRequired?{descriptionRequired:true}:{})}]:[])];}
  data.procurement[field]=old?rows.map(r=>r.id===id?row:r):[...rows,row];return {ok:true,id};
 }
 
@@ -82,7 +84,7 @@ export function presentationPurchase(data,input,catalog){
  const entries=input.items??[input];
  if(!Array.isArray(entries)||!entries.length)throw Error('Agrega al menos un producto.');
  const physical=entries.map(entry=>{
-   const p=data.procurement.presentations?.find(p=>p.id===entry.presentationId&&p.active);if(!p)throw Error('Presentación no disponible.');
+   const p=data.procurement.presentations?.find(p=>p.id===entry.presentationId&&p.active&&p.purchaseEnabled!==false);if(!p)throw Error('Presentación no disponible.');
    const count=Number(entry.quantity);decimal(entry.quantity);if(p.integerOnly&&!Number.isInteger(count))throw Error('Cantidad de empaques entera requerida.');
    const base=baseQuantity(entry.quantity,p.factor),calculation=presentationPurchaseCost(entry);
    return {p,count,base,...calculation};

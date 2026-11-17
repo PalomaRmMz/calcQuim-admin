@@ -92,6 +92,17 @@
 .app-dialog .sale-footer-total { padding: 8px 14px; background: var(--cq-surface-selected); border-radius: var(--cq-radius-sm); }
 .app-dialog .sale-section-heading > span { background: none; color: var(--cq-muted); padding: 0; }
 
+.sale-modal .sale-capture-hardware { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+.sale-modal .sale-capture-quantity { max-width:12rem; }
+.sale-modal .sale-capture-quantity input { width:8rem; }
+.sale-modal .sale-section { margin-bottom:10px; }
 .sale-price-information { margin: 4px 0 8px; font-size: 14px; }
 .sale-modal .physical-suggestion { display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:4px; color:#64748b; font-weight:400; }
 .sale-modal .sale-capture-cleaning:has(.physical-suggestion) { align-items:start; }
+
+/* Keep physical quantities short and leave room for the adjacent Add action. */
+.sale-modal .sale-capture-cleaning { display:inline-flex; flex-wrap:wrap; max-width:100%; vertical-align:bottom; margin-right:10px; }
+.sale-modal .sale-capture-cleaning .cleaning-capture-mode { flex:0 1 15rem; }
+.sale-modal .sale-capture-cleaning .cleaning-entry-grid > label { flex:0 0 8rem; max-width:100%; }
+.sale-modal .sale-capture-cleaning .cleaning-entry-grid > label:nth-child(2) { flex-basis:12rem; }
+.sale-modal .sale-capture-cleaning .cleaning-entry-grid input { width:8rem; max-width:100%; }

@@ -12,6 +12,7 @@ export async function startOperationalMobile(database,config){
  const lanUrl=new URL(settings.lanUrl),lan=localLan(lanUrl.hostname);
  if(lanUrl.protocol!=='http:'||lanUrl.port!=='3016'||settings.lanSubnet!==lan.cidr)throw Error('MOBILE_LAN_CONFIG_MISMATCH');
  process.env.CALCQUIM_MOBILE_OPERATIONAL_AUTHORIZED='yes';
+ process.env.CALCQUIM_MOBILE_COMMERCE_AUTHORIZED='yes';
  const servers=[];
  try{
   for(const host of ['127.0.0.1',lan.host]){

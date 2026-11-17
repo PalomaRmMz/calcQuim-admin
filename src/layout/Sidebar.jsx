@@ -19,7 +19,7 @@ export default function Sidebar({ collapsed, setCollapsed, mobileMenuOpen, setMo
     const compact = collapsed && !mobileMenuOpen;
     const closeMenu = () => setMobileMenuOpen?.(false);
     return <aside className={`sidebar ${compact ? "sidebar-collapsed" : ""} ${mobileMenuOpen ? "mobile-open" : ""}`}>
-        <div className="sidebar-header"><div className="brand-icon">C</div>{!compact && <div className="brand-text"><h1>CalcQuim</h1><span>Panel de Administración</span></div>}</div>
+        <div className="sidebar-header"><div className="brand-icon">C</div>{!compact && <div className="brand-text"><h1>Nexo</h1><span>Panel de Administración</span></div>}</div>
         <nav className="sidebar-menu" aria-label="Navegación principal">
             {menuItems.map(item => {
                 if (!item.children) return <NavLink key={item.path} to={item.path} title={item.label} aria-label={item.label} className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`} onClick={closeMenu}><FontAwesomeIcon icon={item.icon} className="sidebar-item-icon" />{!compact && <span>{item.label}</span>}</NavLink>;
@@ -37,6 +37,6 @@ export default function Sidebar({ collapsed, setCollapsed, mobileMenuOpen, setMo
                 </div>;
             })}
         </nav>
-        <div className="sidebar-footer">{!compact && <div><div>CalcQuim Admin</div><small>Uso personal</small></div>}<button type="button" className="sidebar-collapse-button" onClick={() => setCollapsed?.(!collapsed)} aria-label={collapsed ? "Expandir menú" : "Contraer menú"}><FontAwesomeIcon icon={collapsed ? faChevronRight : faChevronLeft} /></button></div>
+        <div className="sidebar-footer">{!compact && <div><div>Nexo · Administración</div><small>Uso personal</small></div>}<button type="button" className="sidebar-collapse-button" onClick={() => setCollapsed?.(!collapsed)} aria-label={collapsed ? "Expandir menú" : "Contraer menú"}><FontAwesomeIcon icon={collapsed ? faChevronRight : faChevronLeft} /></button></div>
     </aside>;
 }

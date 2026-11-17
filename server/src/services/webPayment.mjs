@@ -14,9 +14,10 @@ export async function configureWebPayment(c,input){
  return {ok:true};
 }
 export function applyWebPayment(data,before,name,args,options={}){
- if(['createCommercialSale','createSale'].includes(name)&&options.webPaymentEnabled){
+ if((['createCommercialSale','createSale'].includes(name)&&options.webPaymentEnabled)||(name==='createMobileSale'&&options.mobilePaymentEnabled)){
+  if(name==='createMobileSale'&&args[0]?.mobilePaymentPolicyVersion!==WEB_PAYMENT_POLICY)throw new ApiError(409,'MOBILE_PAYMENT_CLIENT_UPDATE_REQUIRED','Actualiza Android y sincroniza el catálogo antes de cobrar.');
   if(options.webPaymentVersion&&options.webPaymentVersion!==WEB_PAYMENT_POLICY)throw new ApiError(409,'WEB_PAYMENT_POLICY_SCHEMA_MISMATCH','El esquema de pruebas anterior no debe reutilizarse con otra pol?tica.');
-  if(args[0]?.webPaymentPolicyVersion!==WEB_PAYMENT_POLICY)throw new ApiError(409,'WEB_PAYMENT_CLIENT_UPDATE_REQUIRED','Actualiza la web antes de registrar un cobro con la nueva política.');
+  if(name!=='createMobileSale'&&args[0]?.webPaymentPolicyVersion!==WEB_PAYMENT_POLICY)throw new ApiError(409,'WEB_PAYMENT_CLIENT_UPDATE_REQUIRED','Actualiza la web antes de registrar un cobro con la nueva política.');
   const sale=data.sales[0];decorate(sale,WEB_PAYMENT_POLICY);
   if(sale.originalReceipt)sale.originalReceipt={...sale.originalReceipt,payment:sale.payment,monetary:{...sale.monetary},total:sale.total};
  }else if(name==='correctMobileSale'){

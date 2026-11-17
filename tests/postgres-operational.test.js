@@ -14,7 +14,7 @@ test('inicio operativo omite la aceptación sintética y nunca accede a localSto
     try {
         const {default:Application}=await server.ssrLoadModule('/src/PostgresApplication.jsx');
         const html=renderToString(React.createElement(MemoryRouter,null,React.createElement(Application,{operational:true})));
-        assert.ok(html.includes('CalcQuim'));
+        assert.ok(html.includes('Nexo'));
         assert.ok(!html.includes('Abrir entorno'));
         assert.ok(!html.includes('LOCALSTORAGE_FORBIDDEN'));
     }finally{

@@ -1,3 +1,4 @@
+import PurchaseCostCorrection from '../components/PurchaseCostCorrection';
 import {Link} from 'react-router';
 import {purchaseInventoryStates} from '../domain/purchaseInventory.mjs';
 import {useContext} from 'react';
@@ -46,7 +47,7 @@ export default function PurchasesPage() {
  
     const [status, setStatus] = useState("valid");
     const { products, categories, productLines } = useCatalog();
-    const [editing, setEditing] = useState(null);
+    const [editing, setEditing] = useState(null);const [costEditing,setCostEditing]=useState(null);
     const [creating, setCreating] = useState(false);
     const [purchaseType,setPurchaseType]=useState('');
     const [selectedId, selectPurchase] = useState(null);
@@ -76,7 +77,7 @@ export default function PurchasesPage() {
         { id: "products", header: "Artículos", accessorFn: (p) => p.items.length },
         { accessorKey: "total", header: "Total", Cell: ({ cell }) => <strong>{money(cell.getValue())}</strong> },
         { id: "status", header: "Estado", accessorFn: (p) => p.voidedAt ? "Anulada" : purchaseActivity(p)==='JARCERIA' ? !inventory ? "Consultando recepción" : receivedAll(p) ? "Recibida" : "Pendiente de recepción" : "Registrada" },
-        { id: "actions", header: "Acciones", enableSorting: false, Cell: ({ row }) => <TableActions label="compra" onView={() => setSelected(row.original)} onEdit={!row.original.voidedAt&&purchaseActivity(row.original)!=='JARCERIA' ? () => setEditing(row.original) : undefined} onDelete={!row.original.voidedAt ? () => {setVoidInventory({confirmed:false,disposition:'',reason:''});setDeleting(row.original);} : undefined} deleteLabel="Anular" /> },
+        { id: "actions", header: "Acciones", enableSorting: false, Cell: ({ row }) => <TableActions label="compra" onView={() => setSelected(row.original)} onEdit={!row.original.voidedAt ? () => purchaseActivity(row.original)==='JARCERIA'?setCostEditing(row.original):setEditing(row.original) : undefined} onDelete={!row.original.voidedAt ? () => {setVoidInventory({confirmed:false,disposition:'',reason:''});setDeleting(row.original);} : undefined} deleteLabel="Anular" /> },
     ];
     return <>
         <div className="d-flex justify-content-end mb-3"><ExportExcelButton scope="procurement" /></div>
@@ -103,6 +104,7 @@ export default function PurchasesPage() {
         </ContentPanel></>
 
         {creating&&!purchaseType&&<Dialog className="app-dialog" open onClose={()=>setCreating(false)}><ModalHeader title="Nueva compra" subtitle="Selecciona la actividad" onClose={()=>setCreating(false)}/><DialogContent><Button onClick={()=>setPurchaseType('LIMPIEZA')}>Productos de limpieza</Button><Button onClick={()=>setPurchaseType('JARCERIA')}>Jarcería</Button></DialogContent></Dialog>}
+        {costEditing&&<PurchaseCostCorrection purchase={costEditing} persistence={persistence} onClose={()=>setCostEditing(null)}/>}
         {creating&&purchaseType==='JARCERIA'&&<HardwarePurchases onClose={()=>{setCreating(false);setPurchaseType('');}} onCreated={()=>{setCreating(false);setPurchaseType('');}}/>}
         {(editing||creating&&purchaseType==='LIMPIEZA')&&<CleaningScope includeSupplierId={editing?.supplierId}><PurchaseFormModal activity={editing?null:'LIMPIEZA'} purchase={editing} onClose={()=>{setCreating(false);setEditing(null);setPurchaseType('');}} onSave={save}/></CleaningScope>}
         <Dialog className="app-dialog" open={Boolean(selected)} onClose={() => setSelected(null)} fullWidth maxWidth="lg" PaperProps={{ className: "sale-detail" }} aria-labelledby="purchase-detail-title">

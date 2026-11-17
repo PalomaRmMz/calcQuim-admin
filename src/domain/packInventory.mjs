@@ -3,7 +3,6 @@ export function whole(value){const n=inventoryDecimal(value);if(n<0n||n%1000000n
 export function packOptions(product,presentations){
  if(product?.activity!=='JARCERIA'||product.unit!=='pieza')return [];
  const rows=presentations.filter(p=>String(p.productId)===String(product.id)&&p.active);
- if(!rows.some(p=>p.unit==='pieza'&&Number(p.factor)===1))return [];
  return rows.filter(p=>p.unit==='paquete'&&Number.isSafeInteger(Number(p.factor))&&Number(p.factor)>1);
 }
 export function composition(spec,presentation){

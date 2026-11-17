@@ -47,8 +47,20 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
     mobileStatus:key=>transaction(async c=>{
       const row=(await c.query('SELECT response FROM idempotency_requests WHERE request_key=$1',['mobile:'+key])).rows[0];
       const snapshot=await read(c);
-      return row?.response?.receipt?{receipt:row.response.receipt,revision:snapshot.revision,generation:snapshot.generation,inventoryPending:(await inventoryPending(c)).filter(p=>p.saleId===row.response.receipt.id)}:{status:'not_found'};
+      return row?.response?.cancelled?{status:'cancelled',...row.response}:row?.response?.receipt?{receipt:row.response.receipt,revision:snapshot.revision,generation:snapshot.generation,inventoryPending:(await inventoryPending(c)).filter(p=>p.saleId===row.response.receipt.id)}:{status:'not_found'};
     },true),
+    cancelMobileAttempt:(key,input,principal)=>transaction(async c=>{
+      const current=await read(c,true); // Same lock as sale creation: cancellation and late POST cannot both win.
+      if(input.generation!==current.generation)throw new ApiError(409,'GENERATION_CHANGED','Verifica el envío en el conjunto de datos original.');
+      const previous=(await c.query('SELECT response FROM idempotency_requests WHERE request_key=$1',['mobile:'+key])).rows[0]?.response;
+      if(previous?.receipt)return {receipt:previous.receipt,revision:current.revision,generation:current.generation};
+      if(previous?.cancelled)return {status:'cancelled',...previous};
+      if(input.linkedSaleId){const sale=current.data.sales.find(s=>String(s.id)===String(input.linkedSaleId)&&s.origin==='WEB'&&!s.voidedAt);if(!sale)throw new ApiError(422,'INVALID_WEB_LINK','Selecciona una venta web vigente por su identificador exacto.');}
+      const response={cancelled:true,reason:input.reason,linkedSaleId:input.linkedSaleId||null,at:new Date().toISOString(),responsibleId:principal.id};
+      await c.query('INSERT INTO idempotency_requests(request_key,request_hash,response) VALUES($1,$2,$3)',['mobile:'+key,createHash('sha256').update('cancelled:'+key).digest('hex'),JSON.stringify(response)]);
+      await c.query("INSERT INTO inventory_changes(action,reference) VALUES('mobile_attempt_reconciled',$1)",[JSON.stringify({operationId:key,...response,channel:'MOVIL'})]);
+      return {status:'cancelled',...response};
+    }),
     async command({name,args,revision,generation,requestKey,channel='WEB'}) {
       if(name==='createMobileSale'&&channel!=='MOVIL')throw new ApiError(403,'CHANNEL_FORBIDDEN','Canal no autorizado.');
       if (!Number.isSafeInteger(revision)||typeof generation!=='string'||!requestKey||!/^[a-zA-Z0-9:_-]{8,150}$/.test(requestKey)) throw new ApiError(400,'INVALID_PRECONDITION','Se requieren revisión, generación y clave de idempotencia.');
@@ -68,7 +80,7 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
         try {
           if(name==='configureWebPaymentPolicy')result=await configureWebPayment(c,args[0]);
           else if(inventoryCommands.includes(name))result={ok:true,...await executeInventoryCommand(c,current.data,name,args)};
-          else {const policy=await webPaymentSnapshot(c);result=executeCommand(current.data,current.counters,name,args,{webPaymentEnabled:channel==='WEB'&&policy.enabled,webPaymentVersion:policy.policy_version});}
+          else {const policy=await webPaymentSnapshot(c);result=executeCommand(current.data,current.counters,name,args,{webPaymentEnabled:channel==='WEB'&&policy.enabled,mobilePaymentEnabled:channel==='MOVIL'&&policy.enabled&&(purpose==='synthetic'||purpose==='operational'&&process.env.CALCQUIM_MOBILE_OPERATIONAL_AUTHORIZED==='yes'&&process.env.CALCQUIM_MOBILE_COMMERCE_AUTHORIZED==='yes'),webPaymentVersion:policy.policy_version});}
         }
         catch(error) {if(error instanceof ApiError) throw error; throw new ApiError(422,'DOMAIN_VALIDATION',error.message);}
         if(name==='configureWebPaymentPolicy'){await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true');}

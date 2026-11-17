@@ -1,3 +1,4 @@
+import {installStability} from './stability.mjs';
 import {installSalesHistory} from './sales-history-route.mjs';
 import {salesHistoryReader} from './sales-history-policy.mjs';
 import {installHardwareCreation} from './hardware-creation.mjs';
@@ -11,8 +12,10 @@ import { PRICING_VERSION } from './catalog.mjs';
 import { commercialChoices } from './commercial.mjs';
 import { wholesaleSettings, WHOLESALE_VERSION } from '../../../src/domain/wholesalePricing.mjs';
 const authorized = (provided, expected) => expected.length >= 32 && Buffer.byteLength(provided) === Buffer.byteLength(expected) && timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
-export function mobileRouter(service, { mode = 'synthetic', token = '', enabled = false } = {}) {
+export function mobileRouter(service, { mode = 'synthetic', token = '', enabled = false, qaPrincipal = null } = {}) {
   const r = Router();
+  const operationalCommerce = mode === 'operational' && process.env.CALCQUIM_MOBILE_OPERATIONAL_AUTHORIZED === 'yes' && process.env.CALCQUIM_MOBILE_COMMERCE_AUTHORIZED === 'yes' && inventoryOwner(token) !== null;
+  const stabilityPrincipal = mode === 'operational' ? (operationalCommerce ? {...inventoryOwner(token),permissions:[...inventoryOwner(token).permissions,'sales:edit','sales:reconcile']} : null) : qaPrincipal;
   r.use((req, _res, next) => {
     if (!enabled || (mode === 'operational' && process.env.CALCQUIM_MOBILE_OPERATIONAL_AUTHORIZED !== 'yes')) throw new ApiError(403, 'MOBILE_DISABLED', 'Registro móvil pendiente de habilitación autorizada.');
     if (!authorized(req.get('Authorization')?.replace(/^Bearer /, '') || '', token)) throw new ApiError(401, 'MOBILE_AUTH_REQUIRED', 'Credencial móvil inválida.');
@@ -21,9 +24,9 @@ export function mobileRouter(service, { mode = 'synthetic', token = '', enabled 
   r.get('/catalog', async (req, res) => {
     const s = await service.read();
     const settings=wholesaleSettings(s.data);
-    const capable=mode!=='operational'&&req.get('X-CalcQuim-Capabilities')?.split(',').includes(COMMERCE_VERSION);
+    const capable=(mode!=='operational'||operationalCommerce)&&req.get('X-CalcQuim-Capabilities')?.split(',').includes(COMMERCE_VERSION);
     const data=capable?s.data:{...s.data,products:s.data.products.filter(p=>p.activity!=='JARCERIA'),procurement:{wholesalePricing:s.data.procurement.wholesalePricing}};
-    res.json({ ...(capable?{capabilities:[COMMERCE_VERSION]}:{}), commercialOptions: commercialChoices(data), commercialOptionsVersion: 'official-relations-v1', data: {...Object.fromEntries(['categories', 'productLines', 'priceGroups', 'products'].map(k => [k, data[k]])),...(capable?{presentations:s.data.procurement.presentations||[],services:s.data.procurement.services||[]}:{}),...(settings?.version===WHOLESALE_VERSION?{wholesalePricing:settings}: {})}, revision: s.revision, generation: s.generation, pricingVersion: settings?.version===WHOLESALE_VERSION?WHOLESALE_VERSION:PRICING_VERSION, environment:mode, salesEnabled:true, generatedAt: new Date().toISOString() });
+    res.json({ ...((mode!=='operational'||operationalCommerce)&&s.webPaymentPolicy?.enabled?{mobilePaymentPolicy:s.webPaymentPolicy}:{}), ...(capable?{capabilities:[COMMERCE_VERSION]}:{}), commercialOptions: commercialChoices(data), commercialOptionsVersion: 'official-relations-v1', data: {...Object.fromEntries(['categories', 'productLines', 'priceGroups', 'products'].map(k => [k, data[k]])),...(capable?{presentations:s.data.procurement.presentations||[],services:s.data.procurement.services||[]}:{}),...(settings?.version===WHOLESALE_VERSION?{wholesalePricing:settings}: {})}, revision: s.revision, generation: s.generation, pricingVersion: settings?.version===WHOLESALE_VERSION?WHOLESALE_VERSION:PRICING_VERSION, environment:mode, salesEnabled:true, generatedAt: new Date().toISOString() });
   });
   r.get('/sales/status/:key', async (req, res) => {
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(req.params.key)) throw new ApiError(400, 'INVALID_KEY', 'Clave inválida.');
@@ -33,10 +36,10 @@ export function mobileRouter(service, { mode = 'synthetic', token = '', enabled 
     const key = req.get('Idempotency-Key');
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(key || '')) throw new ApiError(400, 'INVALID_KEY', 'Clave inválida.');
     const body = req.body;
-    if(mode==='operational'&&(body?.commerceVersion||body?.items?.some(item=>['presentation','service'].includes(item.reference?.kind))))throw new ApiError(403,'WEB_ONLY_COMMERCE','Jarcería y lavandería están habilitadas únicamente en la web.');
+    if(mode==='operational'&&!operationalCommerce&&(body?.commerceVersion||body?.items?.some(item=>['presentation','service'].includes(item.reference?.kind))))throw new ApiError(403,'WEB_ONLY_COMMERCE','Jarcería y lavandería están habilitadas únicamente en la web.');
     if (!body || !Array.isArray(body.items)) throw new ApiError(400, 'INVALID_BODY', 'Venta inválida.');
     if (![PRICING_VERSION,WHOLESALE_VERSION].includes(body.pricingVersion)) throw new ApiError(409,'PRICING_CLIENT_UPDATE_REQUIRED','Actualiza la aplicación y sincroniza el catálogo. No se aceptan descuentos porcentuales anteriores.');
-    const s = await service.command({ name: 'createMobileSale', args: [{ ...(body.commerceVersion?{commerceVersion:body.commerceVersion}:{}),payment: body.payment, items: body.items, pricingVersion:body.pricingVersion }], revision: body.revision, generation: body.generation, requestKey: `mobile:${key}`, channel: 'MOVIL' });
+    const s = await service.command({ name: 'createMobileSale', args: [{ ...(body.commerceVersion?{commerceVersion:body.commerceVersion}:{}),mobilePaymentPolicyVersion:body.mobilePaymentPolicyVersion,payment: body.payment, items: body.items, pricingVersion:body.pricingVersion }], revision: body.revision, generation: body.generation, requestKey: `mobile:${key}`, channel: 'MOVIL' });
     res.json({ receipt: s.result.receipt, inventoryPending:s.inventoryPending.filter(p=>p.saleId===s.result.receipt.id), revision:s.revision, generation:s.generation });
   });
   // Appended after the existing authentication/body middleware; also used by LAN.
@@ -44,7 +47,8 @@ export function mobileRouter(service, { mode = 'synthetic', token = '', enabled 
     mode, writeEnabled: mode === 'operational' && inventoryWritesAuthorized && inventoryOwner(token) !== null,
     principal: mode === 'operational' ? inventoryOwner(token) : null,
   });
-  installHardwareCreation(r,service,{principal:mode==='operational'?inventoryOwner(token):null});
-  installSalesHistory(r,service,{principal:mode==='operational'?salesHistoryReader(token):null});
+  installHardwareCreation(r,service,{principal:mode==='operational'?inventoryOwner(token):qaPrincipal});
+  installSalesHistory(r,service,{principal:mode==='operational'?salesHistoryReader(token):qaPrincipal});
+  installStability(r,service,{principal:stabilityPrincipal});
   return r;
 }

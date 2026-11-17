@@ -249,7 +249,7 @@ export async function syncInventory(c,before,data,name,args){
         await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:args[1].reason,saleId:sale.id,saleOrdinal:ordinal,originKey:'correction:'+sale.id+':'+sale.commercialVersion+':'+ordinal,reference:{physicalPresentation:item.presentationSnapshot??null,commercialVersion:sale.commercialVersion,...baseline}});
       }
     }
-    await inventoryChange(c,'commercial_correction',{saleId:sale.id,version:sale.commercialVersion,channel:'WEB',reason:args[1].reason});
+    await inventoryChange(c,'commercial_correction',{saleId:sale.id,version:sale.commercialVersion,channel:args[1].auditChannel==='MOVIL'?'MOVIL':'WEB',reason:args[1].reason});
   }
   if(name==='createSale'||name==='createMobileSale'||name==='createCommercialSale'){
     const sale=data.sales.find(s=>!before.sales.some(old=>old.id===s.id));if(!sale)return;

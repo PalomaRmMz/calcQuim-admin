@@ -12,6 +12,7 @@ export function decimal(value,places=6,positive=true){
 const num=n=>{if(n>BigInt(Number.MAX_SAFE_INTEGER))fail('Valor fuera de rango.');return Number(n);};
 export function baseQuantity(quantity,factor){const n=decimal(quantity)*decimal(factor);if(n%1000000n)fail('Contenido no representable en seis decimales.');return num(n/1000000n)/1000000;}
 export function validatePresentation(p,products){
+ if(['saleEnabled','purchaseEnabled'].some(k=>p?.[k]!==undefined&&typeof p[k]!=='boolean'))fail('Define si la presentaci\u00f3n admite compra y venta.');
  if(!p?.id||!p.name?.trim()||p.name.length>200||!products.some(x=>sameId(x.id,p.productId)&&x.activity==='JARCERIA'))fail('Selecciona un artículo de jarcería y nombre de presentación.');
  if(!['pieza','paquete','kg','gramo','bolsa','envase','botella'].includes(p.unit))fail('Unidad comercial inválida.');
  decimal(p.factor);decimal(p.price,2,false);
@@ -28,7 +29,7 @@ export function validateService(s){
 }
 export function commerceChoices(data){
  const model=data?.procurement??data??{},products=data?.products??[];
- return [...(model.presentations||[]).filter(p=>p.active&&products.some(x=>sameId(x.id,p.productId)&&x.active&&x.available!==false)).map(p=>({key:'presentation:'+p.id,kind:'presentation',refId:p.id,name:p.name,context:'Jarcería · '+(products.find(x=>sameId(x.id,p.productId))?.name||''),tariffs:[{key:'commerce:'+p.id,price:Number(p.price),unit:p.unit,productIds:[p.productId],commerceVersion:COMMERCE_VERSION,presentation:p}]})),
+ return [...(model.presentations||[]).filter(p=>p.active&&p.saleEnabled!==false&&Number(p.price)>0&&products.some(x=>sameId(x.id,p.productId)&&x.active&&x.available!==false)).map(p=>({key:'presentation:'+p.id,kind:'presentation',refId:p.id,name:p.name,context:'Jarcería · '+(products.find(x=>sameId(x.id,p.productId))?.name||''),tariffs:[{key:'commerce:'+p.id,price:Number(p.price),unit:p.unit,productIds:[p.productId],commerceVersion:COMMERCE_VERSION,presentation:p}]})),
  ...(model.services||[]).filter(s=>s.active).map(s=>({key:'service:'+s.id,kind:'service',refId:s.id,name:s.name,context:'Lavandería',tariffs:[{key:'commerce:'+s.id,price:s.priceMode==='custom'?0:Number(s.price),unit:s.unit,productIds:[],commerceVersion:COMMERCE_VERSION,service:s}]}))];
 }
 export function makeCommerceLine(choice,tariff,mode,value,id,options={}){
@@ -58,7 +59,7 @@ export function resolveCommerceLine(row,data,id){
 export function historicalCommerceLine(old,value,options={}){
  const t={key:old.tariffKey,price:old.presentationSnapshot?.price??old.serviceSnapshot?.price??0,unit:old.unit,presentation:old.presentationSnapshot,service:old.serviceSnapshot};
  const c={kind:old.reference.kind,refId:old.reference.id,name:old.name,context:old.context,tariffs:[t]};
- return {...old,...makeCommerceLine(c,t,old.entryMode,value,old.id,{addons:old.addons?.map(a=>a.id)||[],description:options.description??old.description})};
+ return {...old,...makeCommerceLine(c,t,old.entryMode,value,old.id,{addons:options.addons??old.addons?.map(a=>a.id)??[],description:options.description??old.description})};
 }
 export function commerceReport(sales,from='',to=''){
  const byActivity={LIMPIEZA:0,JARCERIA:0,LAVANDERIA:0,SIN_CLASIFICAR:0},rank=new Map(),articles=new Map();let totalCents=0,mixed=0;

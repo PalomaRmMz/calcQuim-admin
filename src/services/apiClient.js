@@ -4,7 +4,7 @@ export function createApiClient(fetcher = fetch, keyStore = null, mode='syntheti
     const pending = new Map();
     async function responseJson(response) {
         const value = await response.json();
-        if (!response.ok) throw new Error(value.error?.message || `No se pudo guardar (${value.error?.code || response.status}).`);
+        if (!response.ok) {const error=new Error(value.error?.message || `No se pudo guardar (${value.error?.code || response.status}).`);error.code=value.error?.code;error.status=response.status;throw error;}
         return value;
     }
     return {
@@ -28,7 +28,7 @@ export function createApiClient(fetcher = fetch, keyStore = null, mode='syntheti
                 }));
                 snapshot = value; pending.delete(identity); keyStore?.removeItem(storeKey);
                 return { ...value.result, ok: true, snapshot: value };
-            } catch (error) { return { ok: false, message: error.message || 'Conexión interrumpida. Reintenta sin cerrar esta página.' }; }
+            } catch (error) { return { ok: false, ...(error.code?{code:error.code}:{}),...(error.status?{status:error.status}:{}), message: error.message || 'Conexión interrumpida. Reintenta sin cerrar esta página.' }; }
             finally { busy = false; }
         },
     };
