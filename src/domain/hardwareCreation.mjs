@@ -12,6 +12,10 @@ export function quickPresentations(form) {
   if(form.saleMode!=='pack') rows.push({name:'Pieza individual',unit:'pieza',factor:'1',price:form.piecePrice});
   return rows;
 }
+export const hardwarePresentationUnits=['pieza','paquete','kg','gramo','bolsa','envase','botella'];
+export const wholeSaleUnit=unit=>!['kg','gramo'].includes(unit);
+const decimalInput=value=>String(value??'').trim().replace(',','.');
+
 export function hardwareCreationBundle(form) {
   if (['piece','pack','both'].includes(form.saleMode)) form={...form,unit:'pieza',presentations:quickPresentations(form)};
   const name=String(form.name??'').trim(),variant=String(form.variant??'').trim();
@@ -19,32 +23,44 @@ export function hardwareCreationBundle(form) {
   if(!['pieza','kg','gramo','bolsa','envase','botella'].includes(form.unit))throw Error('Selecciona una unidad válida.');
   const pricePending=form.pricePending===true;
   const presentations=(pricePending&&!form.saleMode?[]:form.presentations).map(p=>{
-    if(!p.name?.trim()||(!pricePending&&p.saleEnabled!==false&&(!/^\d+(?:\.\d{1,2})?$/.test(String(p.price))||Number(p.price)<=0)))throw Error('Cada presentación requiere nombre y precio positivo con hasta dos decimales.');
-    if(!/^\d+(?:\.\d{1,6})?$/.test(String(p.factor))||Number(p.factor)<=0)throw Error('Indica el contenido real de cada presentación.');
-    return {name:p.name.trim(),unit:p.unit,factor:Number(p.factor),price:pricePending||p.saleEnabled===false?0:Number(p.price),saleEnabled:p.saleEnabled!==false,purchaseEnabled:p.purchaseEnabled!==false,integerOnly:!['kg','gramo'].includes(form.unit),active:true};
+    const price=decimalInput(p.price),factor=decimalInput(p.factor);
+    if(!hardwarePresentationUnits.includes(p.unit))throw Error('Selecciona la unidad de presentación.');
+    if(!pricePending&&p.saleEnabled!==false&&(!/^\d+(?:\.\d{1,2})?$/.test(price)||Number(price)<=0))throw Error('Cada presentación de venta requiere precio positivo con hasta dos decimales.');
+    if(!/^\d+(?:\.\d{1,6})?$/.test(factor)||Number(factor)<=0)throw Error('Indica el contenido real de cada presentación.');
+    const name=p.name?.trim()||(p.unit==='paquete'?`Paquete de ${factor} ${form.unit==='pieza'?'piezas':form.unit}`:p.unit==='pieza'?'Pieza individual':p.unit);
+    return {name,unit:p.unit,factor:Number(factor),price:pricePending||p.saleEnabled===false?0:Number(price),saleEnabled:p.saleEnabled!==false,purchaseEnabled:p.purchaseEnabled!==false,integerOnly:wholeSaleUnit(form.unit)||wholeSaleUnit(p.unit),active:true};
   });
   if(!pricePending&&!presentations.length)throw Error('Agrega una presentación.');
   if (['pack','both'].includes(form.saleMode) && (!/^\d+$/.test(String(form.packSize)) || Number(form.packSize)<2 || !Number.isSafeInteger(Number(form.packSize)))) throw Error('Indica al menos dos piezas por paquete.');
+  const minimum=decimalInput(form.minimum);
+  if(minimum&&!(/^\d+(?:\.\d{1,6})?$/.test(minimum)&&(!wholeSaleUnit(form.unit)||Number.isInteger(Number(minimum)))))throw Error('Indica un inventario mínimo válido en la unidad base.');
   const product={name:name+(variant?` · ${variant}`:''),unit:form.unit,hardwareCategoryId:form.hardwareCategoryId||null,
-    characteristics:variant?`Variante: ${variant}`:'',active:true,available:!pricePending,pricePending,enforceStock:true,autoOpenPackages:form.saleMode==='both'||form.autoOpenPackages===true};
+    characteristics:variant?`Variante: ${variant}`:'',active:true,available:!pricePending,pricePending,enforceStock:true,autoOpenPackages:form.saleMode==='both'||form.saleMode==='advanced'&&form.autoOpenPackages===true};
   let initialInventory;
   if(form.initialEnabled){
-    let q=String(form.quantity??'').trim();
+    let q=decimalInput(form.quantity);
+    let observations='Inventario inicial confirmado al dar de alta el producto';
     const advancedPack=form.saleMode==='advanced'&&form.unit==='pieza'&&form.presentations.some(p=>p.unit==='paquete');
     if (['pack','both'].includes(form.saleMode)||advancedPack) {
       const index=advancedPack?Number(form.initialPresentationIndex):0;
-      const factor=advancedPack?form.presentations[index]?.factor:form.packSize;
+      const factor=advancedPack?decimalInput(form.presentations[index]?.factor):form.packSize;
       if(advancedPack&&(form.initialPresentationIndex==null||form.initialPresentationIndex===''||form.presentations[index]?.unit!=='paquete'))throw Error('Selecciona el paquete que contaste.');
       if(!/^\d+$/.test(String(factor))||Number(factor)<2)throw Error('El paquete necesita un contenido entero de al menos dos piezas.');
-      const closed=String(form.closedPackages??'').trim(),loose=form.saleMode==='pack'?'0':String(form.looseUnits??'').trim();
+      const closed=String(form.closedPackages??'').trim(),loose=String(form.looseUnits??'0').trim();
       if(!/^\d+$/.test(closed)||!/^\d+$/.test(loose))throw Error('Captura paquetes cerrados y piezas sueltas enteros; vacío no equivale a cero.');
-      const total=BigInt(closed)*BigInt(factor)+BigInt(loose);
+      const opened=String(form.openPackages??'0').trim(),remaining=String(form.openPackagePieces??'0').trim();
+      if(!/^\d+$/.test(opened)||(BigInt(opened)>0n&&!/^\d+$/.test(remaining)))throw Error('Captura paquetes abiertos y piezas restantes enteros.');
+      const openCount=BigInt(opened),openPieces=openCount===0n?0n:BigInt(remaining);
+      if(openCount>0n&&(openPieces<openCount||openPieces>openCount*BigInt(factor)))throw Error('Revisa las piezas que quedan en los paquetes abiertos.');
+      const looseTotal=BigInt(loose)+openPieces;
+      const total=BigInt(closed)*BigInt(factor)+looseTotal;
+      if(form.openPackages!==undefined)observations+=` · Paquetes abiertos: ${openCount} · Piezas restantes en abiertos: ${openPieces}`;
       if(total>9007199254n)throw Error('Inventario inicial fuera de rango.');
       q=String(total);
-      initialInventory={physicalComposition:{presentationIndex:index,closedPackages:closed,looseUnits:loose}};
+      initialInventory={physicalComposition:{presentationIndex:index,closedPackages:closed,looseUnits:String(looseTotal)}};
     }
     if(!/^\d+(?:\.\d{1,6})?$/.test(q)||(!['kg','gramo'].includes(form.unit)&&!Number.isInteger(Number(q))))throw Error('Captura la cantidad inicial explícita y válida; vacío no equivale a cero.');
-    initialInventory={...initialInventory,quantity:q,unit:form.unit,observations:'Inventario inicial confirmado al dar de alta el producto'};
+    initialInventory={...initialInventory,quantity:q,unit:form.unit,observations};
   }
-  return {product,presentations,...(initialInventory?{initialInventory}:{})};
+  return {product,presentations,...(minimum!==''?{minimum}:{}),...(initialInventory?{initialInventory}:{})};
 }

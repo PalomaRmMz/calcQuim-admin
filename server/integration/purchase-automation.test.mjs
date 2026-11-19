@@ -153,5 +153,16 @@ test('purchases, preparation, reconciliation, corrections and unknown initial st
    runPgTool('pg_restore',['--no-owner','--no-acl','--exit-on-error','--single-transaction',dump],config.database);
    assert.deepEqual(await service.read(),before);assert.deepEqual(await service.inventory(),inventory);assert.deepEqual(await service.purchaseInventory(),tracking);
   });
+  await t.test('new backdated finished purchase is received once without misclassifying it as historical',async()=>{
+   await cmd('addProduct',{name:'Terminado fecha anterior QA',unit:'litro',price:10,active:true,available:true});
+   const id=state.data.products.at(-1).id;
+   const previousDay=new Date(Date.now()-86400000).toLocaleDateString('en-CA',{timeZone:'America/Mexico_City'});
+   await cmd('savePurchase',{supplierId,activity:'LIMPIEZA',date:previousDay,items:[{directProductId:id,quantity:20,costMode:'total',cost:200}]});
+   const purchase=state.data.procurement.purchases[0],row=(await rows()).find(r=>r.purchase_id===purchase.id);
+   assert.equal(row.historical,false);assert.equal(row.state,'applied');
+   assert.equal((await service.inventory()).movements.filter(m=>m.purchase_id===purchase.id&&m.kind==='receipt').length,1);
+   assert.equal(await stock(id),null);
+  });
+
  }finally{if(server){server.closeIdleConnections();await new Promise(resolve=>server.close(resolve));}await pool.end();}
 });

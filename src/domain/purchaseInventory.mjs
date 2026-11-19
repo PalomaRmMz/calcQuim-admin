@@ -17,5 +17,5 @@ export function purchaseInventoryIntent(item,products){
  }
  return {productId:product?.id??null,activity:product?productActivity(product):item.commercialPurchase?'JARCERIA':'LIMPIEZA',nature,quantity,unit:product?.unit??null,expectedOutput,expectedUnit:snapshot?.yield?.outputUnit??null};
 }
-export const purchaseInventoryStates={reconcile:'Pendiente de conciliación',prepare:'Insumo pendiente de preparación',applied:'Entrada registrada',included:'Ya incluido en inventario',cancelled:'Compra cancelada',returned:'Entrada compensada'};
+export const purchaseInventoryStates={reconcile:'Revisar entrada de compra',prepare:'Pendiente de elaborar',applied:'Entrada registrada',included:'Ya incluido en inventario',cancelled:'Compra cancelada',returned:'Entrada compensada'};
 export const purchaseInventoryActions={registered:'Compra clasificada',receipt:'Entrada de producto terminado',prepared:'Elaboración confirmada',return:'Retiro físico',revised:'Compra corregida o anulada',mapped:'Destino conciliado manualmente',recognized:'Movimiento histórico reconocido',included:'Compra ya incluida en un movimiento',manual_included:'Ya incorporada manualmente: declaración del propietario, sin nueva entrada',compensated:'Compensación de inventario',disposition:'Destino físico confirmado',historical_review:'Revisión de compra histórica'};

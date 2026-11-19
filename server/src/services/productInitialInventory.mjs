@@ -2,9 +2,12 @@ import {ApiError} from './commands.mjs';
 import {productInitialInventory} from '../../../src/domain/productInitialInventory.mjs';
 import {executeInventoryCommand} from './inventory.mjs';
 import {inventoryChange} from '../repositories/inventory.mjs';
+import {inventoryDecimal} from '../../../src/services/inventoryUnits.js';
+import {normalizeUnit} from '../../../src/utils/units.js';
 export async function syncProductInitialInventory(c,before,data,name,args,{channel='WEB'}={}){
  const input=args?.[0],initial=input?.initialInventory==null?input?.initialInventory:structuredClone(input.initialInventory);
- if(initial===undefined){
+ const minimum=input?.minimum;
+ if(initial===undefined&&minimum===undefined){
   if(args?.slice(1).some(a=>a?.initialInventory!==undefined)||input?.product?.initialInventory!==undefined||input?.rows?.some(r=>r.initialInventory!==undefined||r.product?.initialInventory!==undefined))throw new ApiError(422,'INITIAL_CREATION_SCOPE','El inicial integrado corresponde al alta individual. En lote o para productos existentes, utiliza Inventarios.');
   return;
  }
@@ -12,6 +15,16 @@ export async function syncProductInitialInventory(c,before,data,name,args,{chann
  const added=data.products.filter(p=>!before.products.some(old=>String(old.id)===String(p.id)));
  if(added.length!==1)throw new ApiError(422,'INITIAL_CREATION_ONLY','Se requiere exactamente un producto nuevo.');
  const product=added[0];
+ if(minimum!=null&&minimum!==''){
+  try{
+   if(normalizeUnit(product.unit)==='pieza'&&inventoryDecimal(minimum)%1000000n!==0n)throw Error('El inventario mínimo en piezas debe ser entero.');
+  }catch(error){throw new ApiError(422,'INVALID_CREATION_MINIMUM',error.message);}
+  await executeInventoryCommand(c,data,'inventoryReplenishment',[{
+   productId:product.id,unit:product.unit,minimum,reasonCode:'replenishment_configuration',
+   observations:'Inventario mínimo configurado al dar de alta el producto'
+  }]);
+ }
+ if(initial===undefined)return;
  if(initial.physicalComposition?.presentationIndex!==undefined){
   const index=initial.physicalComposition.presentationIndex;
   const definitions=data.procurement.presentations.filter(p=>String(p.productId)===String(product.id));

@@ -1,27 +1,36 @@
+import {quantityLabel} from '../utils/salesUtils.js';
 import { categoryStyle } from '../utils/categoryColors.js';
 import { getProductDisplayName } from '../utils/catalogUtils.js';
 import { unitLabel } from '../utils/units.js';
 import { inventoryStatus } from '../services/inventoryPresentation.js';
 import DataTable from './DataTable';
-import TableActions from './TableActions';
+import InventoryShoppingList from './InventoryShoppingList';
 import '../styles/components/Inventory.css';
+import {inventoryAttention,packDescription} from '../domain/inventoryAttention.mjs';
 
-export default function InventoryProductList({rows,categories,productLines,onSelect,activity='LIMPIEZA',presentations=[]}){
+export default function InventoryProductList({rows,catalogRows,categories,productLines,onSelect,activity='LIMPIEZA',presentations=[],packs=[]}){
     // Mismo orden y configuración inicial que ProductsPage, sin agrupación visual.
     const products=rows.map(p=>({...p,id:p.productId})).sort((a,b)=>getProductDisplayName(a,categories,productLines).localeCompare(getProductDisplayName(b,categories,productLines),'es'));
-    const category=p=>categories.find(c=>c.id===p.categoryId);
+    const displayUnit=p=>presentations.some(r=>String(r.productId)===String(p.productId)&&r.active&&r.key==='rollo'&&Number(r.factor)===1)?'rollo':p.unit;
+    const category=p=>categories.find(c=>String(c.id)===String(activity==='JARCERIA'?p.hardwareCategoryId:p.categoryId));
+    const packById=new Map(packs.map(pack=>[String(pack.productId),pack]));
+    const packFor=p=>packById.get(String(p.productId));
+    const stateFor=p=>inventoryAttention(p,packFor(p));
     const columns=[
         {id:'name',header:'Producto',size:200,accessorFn:p=>getProductDisplayName(p,categories,productLines),Cell:({cell,row})=><button type="button" className="inventory-product-button" onClick={()=>onSelect(row.original.productId)}><span className="table-text-primary category-accent" style={categoryStyle(category(row.original))}>{cell.getValue()}</span></button>},
-        {id:'quantity',header:'Existencia aproximada',size:170,accessorFn:p=>p.quantity===null?null:Number(p.quantity),sortUndefined:'last',Cell:({row})=><>{row.original.quantity===null?<span className="table-text-muted">Sin determinar</span>:<span>{row.original.quantity} {unitLabel(row.original.unit)}</span>}{row.original.negative&&<small className="d-block text-danger">Saldo negativo: revisar estimación</small>}</>},
-        {id:'status',header:'Estado',size:160,accessorFn:p=>inventoryStatus[p.status],Cell:({cell,row})=><>{cell.getValue()}{row.original.movementsWithoutBasis>0&&<small className="d-block text-muted">{row.original.movementsWithoutBasis} movimientos sin saldo inicial</small>}</>},
-        {id:'minimum',header:'Reposición',size:140,accessorFn:p=>p.minimum===null?null:Number(p.minimum),Cell:({row})=><>{row.original.minimum===null?<span className="table-text-muted">Sin configurar</span>:`${row.original.minimum} ${unitLabel(row.original.unit)}`}{row.original.low&&<strong className="d-block text-warning">Reponer</strong>}</>},
-        {id:'batch',header:'Lote habitual',size:140,accessorFn:p=>p.usualBatch===null?null:Number(p.usualBatch),Cell:({row})=>row.original.usualBatch===null?<span className="table-text-muted">Sin configurar</span>:`${row.original.usualBatch} ${unitLabel(row.original.unit)}`},
-        {id:'actions',header:'Acciones',size:110,enableSorting:false,Cell:({row})=><TableActions label={getProductDisplayName(row.original,categories,productLines)} onEdit={()=>onSelect(row.original.productId)} showDelete={false}/>},
+        {id:'quantity',header:'Disponible',size:230,accessorFn:p=>stateFor(p).quantity,sortUndefined:'last',Cell:({row})=>{const p=row.original,pack=packFor(p),state=stateFor(p);return <div className="inventory-availability"><strong>{state.quantity===null?'Desconocido':quantityLabel(state.quantity,displayUnit(p))}</strong><small className="d-block text-muted">{inventoryStatus[p.status]}</small>{pack&&<small className="d-block">{packDescription(pack,displayUnit(p))}</small>}</div>;}},
+        {id:'status',header:'Estado',size:170,accessorFn:p=>stateFor(p).label,Cell:({row})=>{const state=stateFor(row.original);return <span className={`badge text-bg-${state.tone}`}>{state.label}</span>;}},
+        {id:'minimum',header:'Mínimo de reposición',size:145,accessorFn:p=>p.minimum==null||p.minimum===''?null:Number(p.minimum),Cell:({cell,row})=>cell.getValue()===null?<span className="table-text-muted">Sin configurar</span>:`${row.original.minimum} ${unitLabel(row.original.unit)}`},
+        {id:'actions',header:'Acciones',size:170,enableSorting:false,Cell:({row})=><button className="btn btn-sm btn-outline-primary" onClick={()=>onSelect(row.original.productId)}>Ver / ajustar</button>},
         {id:'category',header:'Categoría',size:180,accessorFn:p=>category(p)?.name||'Sin categoría',Cell:({cell,row})=><span className="classification-label category-accent" style={categoryStyle(category(row.original))}>{cell.getValue()}</span>},
-        {id:'line',header:'Línea',accessorFn:p=>productLines.find(l=>l.id===p.lineId)?.name||'---'},
     ];
     if(activity==='JARCERIA'){
-        columns.splice(6,2,{id:'presentations',header:'Presentaciones',accessorFn:p=>presentations.filter(r=>String(r.productId)===String(p.productId)&&r.active).map(r=>r.name+' ('+r.factor+' '+r.baseUnit+')').join(' · ')||'Sin presentaciones'});
+        columns.push({id:'presentations',header:'Presentaciones',accessorFn:p=>presentations.filter(r=>String(r.productId)===String(p.productId)&&r.active).map(r=>r.name+' ('+r.factor+' '+r.baseUnit+')').join(' · ')||'Sin presentaciones'});
+    }else{
+        columns.push({id:'line',header:'Línea',accessorFn:p=>productLines.find(l=>l.id===p.lineId)?.name||'---'});
     }
-    return <DataTable columns={columns} data={products} getRowId={p=>String(p.productId)} columnOrder={['name','quantity','status','minimum','batch','actions',...(activity==='JARCERIA'?['presentations']:['category','line'])]} columnVisibility={{line:false}} searchPlaceholder="Buscar producto..." initialSorting={activity==='JARCERIA'?[{id:'name',desc:false}]:[{id:'category',desc:false},{id:'line',desc:false}]}/>;
+    return <DataTable columns={columns} data={products} getRowId={p=>String(p.productId)}
+        columnOrder={['name','quantity','status','minimum','actions','category',activity==='JARCERIA'?'presentations':'line']}
+        columnVisibility={{line:false,category:false,presentations:false}} searchPlaceholder="Buscar producto..." initialSorting={[{id:'name',desc:false}]}
+        renderTopToolbarCustomActions={({table})=><InventoryShoppingList table={table} options={{activity,catalogRows,categories,productLines,presentations,packs}}/>}/>;
 }

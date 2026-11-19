@@ -10,7 +10,6 @@ import {appendInventoryMovement,inventoryChange,purchaseAutomationPolicy} from '
 import {purchaseInventoryIntent} from '../../../src/domain/purchaseInventory.mjs';
 import {inventoryConvert,inventoryDecimal,inventoryText} from '../../../src/services/inventoryUnits.js';
 import {productActivity} from '../../../src/domain/activityScope.mjs';
-import {localDate} from '../../../src/utils/salesUtils.js';
 const fail=message=>{throw new ApiError(422,'PURCHASE_INVENTORY_VALIDATION',message);};
 const fingerprint=item=>createHash('sha256').update(JSON.stringify(item)).digest('hex');
 const lotKey=row=>`${row.purchase_id}:${row.item_id}`;
@@ -188,6 +187,6 @@ export async function syncPurchaseInventory(c,before,data,name,args){
    if(removed)await update(c,row,{state:['applied','included'].includes(row.state)?options.disposition==='retained'?'included':'returned':'cancelled'});
    else await update(c,row,{source:item,fingerprint:fingerprint(item),ordinal:purchase.items.indexOf(item),quantity:intent.quantity,unit:intent.unit??row.unit,product_id:intent.productId==null?row.product_id:String(intent.productId)});
   }
-  if(!purchase.voidedAt)for(const [ordinal,item]of purchase.items.entries())if(!rows.some(r=>r.item_id===String(item.id)))await register(c,data,purchase,item,ordinal,!!old||purchase.date<localDate());
+  if(!purchase.voidedAt)for(const [ordinal,item]of purchase.items.entries())if(!rows.some(r=>r.item_id===String(item.id)))await register(c,data,purchase,item,ordinal,!!old);
  }
 }

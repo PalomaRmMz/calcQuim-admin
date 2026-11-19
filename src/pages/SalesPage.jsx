@@ -1,3 +1,4 @@
+import {quantityLabel} from '../utils/salesUtils.js';
 import WebMoneyBreakdown from '../components/WebMoneyBreakdown';
 import { saleCapturedAt, saleLastChangedAt, saleMoment } from '../services/saleAuditView.mjs';
 import { lazy, Suspense } from 'react';
@@ -13,14 +14,12 @@ import EmptyState from "../components/EmptyState";
 import { useContext, useEffect, useRef, useState } from "react";
 import { PersistenceContext } from '../context/PersistenceContext.js';
 import { Dialog, DialogContent, DialogActions, Button } from "@mui/material";
-import { faCartShopping, faDollarSign, faChartColumn, faCalendarDay } from "@fortawesome/free-solid-svg-icons";
-import SummaryCard from "../components/SummaryCard";
 import ContentPanel from "../components/ContentPanel";
 import DataTable from "../components/DataTable";
 import CommercialSaleForm from '../components/CommercialSaleForm.jsx';
 import SaleFormModal from "../components/SaleFormModal";
 import { STORAGE_KEYS } from "../services/catalogStorage";
-import { money, localDate } from "../utils/salesUtils";
+import { money } from "../utils/salesUtils";
 import { assertDataGeneration } from "../services/dataReset.js";
 import { useCatalog } from "../context/CatalogHooks.js";
 import "../styles/components/SaleDetailModal.css";
@@ -86,9 +85,6 @@ export default function SalesPage() {
     const pendingSales = sales.filter(hasPending);
     const pendingRows = pendingSales.reduce((sum, sale) => sum + pendingCount(sale), 0);
     const filtered = sales.filter((sale) => (!origin || sale.origin === origin) && (!onlyPending || hasPending(sale)) && (!from || sale.date >= from) && (!to || sale.date <= to));
-    const valid = filtered.filter(s => !s.voidedAt);
-    const total = valid.reduce((sum, sale) => sum + sale.total, 0);
-    const todayTotal = sales.filter((sale) => !sale.voidedAt && sale.date === localDate()).reduce((sum, sale) => sum + sale.total, 0);
 
     function commit(transform) {
         const current = committed.current;
@@ -132,12 +128,7 @@ export default function SalesPage() {
     ];
 
     return <div className="container-fluid px-0">
-        {/* <div className="row g-3 mb-4">
-            <SummaryCard title="Ventas del período" value={valid.length} icon={faCartShopping} variant="blue" />
-            <SummaryCard title="Importe del período" value={money(total)} icon={faDollarSign} variant="green" />
-            <SummaryCard title="Venta promedio" value={money(valid.length ? total / valid.length : 0)} icon={faChartColumn} variant="purple" />
-            <SummaryCard title="Vendido hoy" value={money(todayTotal)} icon={faCalendarDay} variant="yellow" />
-        </div> */}
+
         {notice && <div className="alert alert-success" role="status">{notice}</div>}
         {pendingSales.length > 0 && <aside className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2" aria-label="Ventas por desglosar"><div><strong>{pendingSales.length} {pendingSales.length === 1 ? 'venta por desglosar' : 'ventas por desglosar'}</strong><span className="d-block">{pendingRows} {pendingRows === 1 ? 'renglón pendiente' : 'renglones pendientes'} en todo el historial.</span></div><button className="btn btn-warning" onClick={() => { setOnlyPending(true); setOrigin(''); setFrom(''); setTo(''); }}>Ver ventas pendientes</button><div className="w-100 d-flex flex-wrap gap-2">{pendingSales.map(sale => <button key={sale.id} className="btn btn-sm btn-outline-dark" onClick={() => setSelected(sale)}>{sale.folio} · {pendingCount(sale)} por completar</button>)}</div></aside>}
         <ContentPanel title="Historial de ventas" subtitle="Consulta tus ventas y registra una nueva operación." action={<PrimaryAction onClick={() => setCreating(true)}>Nueva venta</PrimaryAction>}>
@@ -148,7 +139,7 @@ export default function SalesPage() {
             </div>
             {from && to && from > to && <p role="alert" className="text-danger">La fecha inicial debe ser anterior a la final.</p>}
             {!sales.length && <EmptyState title="Sin ventas">Registra tu primera venta para comenzar.</EmptyState>}
-            <DataTable columns={columns} data={filtered} searchPlaceholder="Buscar folio o método de pago..." initialSorting={[{ id: "date", desc: true }]} />
+            <DataTable columnVisibility={{lastChangedAt:false}} columns={columns} data={filtered} searchPlaceholder="Buscar folio o método de pago..." initialSorting={[{ id: "date", desc: true }]} />
         </ContentPanel>
         {creating && (persistence?.snapshot.data.procurement.commerceSchema === 1 ? <CommercialSaleForm onRefresh={persistence.refresh} snapshot={persistence.snapshot} onClose={() => setCreating(false)} onSave={saveSale} /> : <SaleFormModal inventoryEnabled={!!persistence?.snapshot.inventoryEnabled} onClose={() => setCreating(false)} onSave={saveSale} />)}
         {deleting && <ConfirmDialog title="Anular venta" confirmText="Anular" onClose={() => { setDeleting(null); setPhysicalReturn(''); setVoidReason(emptyInventoryReason()); setVoidBaseline(''); }} onConfirm={deleteSale}>¿Anular la venta {deleting.folio} por {money(deleting.total)}? Se conservará el historial y se excluirá de los totales.{persistence?.snapshot.inventoryEnabled && deleting.items.some(i => i.lineType !== 'service') && <><label className="d-block mt-3">Destino físico<select className="form-select" value={physicalReturn} onChange={e => setPhysicalReturn(e.target.value)}><option value="">Selecciona explícitamente</option><option value="returned">No salió o regresó físicamente: reponer salida completa</option><option value="not_returned">Permanece fuera, o ya registré la devolución aparte</option></select></label><label className="d-block mt-2">Si la venta es anterior a una estimacion<select className="form-select" value={voidBaseline} onChange={e => setVoidBaseline(e.target.value)}><option value="">Sin confirmar</option><option value="already_included">El retorno ya estaba incluido: no sumar otra vez</option><option value="apply_now">El retorno debe aplicarse ahora</option></select></label><small className="d-block">Si cada producto requiere un tratamiento distinto, registra las devoluciones por producto en Inventario y anula sin reponer otra vez.</small></>}{persistence?.snapshot.inventoryEnabled && <InventoryReasonFields context="sale_void" value={voidReason} onChange={setVoidReason} idPrefix="sale-void" />}</ConfirmDialog>}
@@ -161,9 +152,9 @@ export default function SalesPage() {
                     <div><dt>Fecha de captura</dt><dd>{saleMoment(saleCapturedAt(selected))}</dd></div>
 
                 </dl>
-                {persistence && !selected.voidedAt && <MobileSaleBreakdown key={selected.id} sale={sales.find(s => s.id === selected.id) || selected} persistence={persistence} products={products} />}<div className="sale-section-heading"><h3>Productos de la venta</h3><span>{selected.items.length} productos</span></div><div className="table-responsive sale-items"><table className="table align-middle"><thead><tr><th>Producto</th><th>Vender por</th><th>Valor</th><th className="text-end">Importe</th></tr></thead>{sortedDetailGroups.map((group) => <tbody key={group.id}>
+                {persistence && !selected.voidedAt && hasPending(selected) && <MobileSaleBreakdown key={selected.id} sale={sales.find(s => s.id === selected.id) || selected} persistence={persistence} products={products} />}<div className="sale-section-heading"><h3>Productos de la venta</h3><span>{selected.items.length} productos</span></div><div className="table-responsive sale-items"><table className="table align-middle"><thead><tr><th>Producto</th><th>Vender por</th><th>Valor</th><th className="text-end">Importe</th></tr></thead>{sortedDetailGroups.map((group) => <tbody key={group.id}>
                     <tr className="sale-group-heading"><th scope="rowgroup" colSpan={4} style={getBadgeStyle(group.colorId) || { backgroundColor: "#f1f3f5", color: "#6c757d" }}>{group.name}</th></tr>
-                    {group.items.map((item) => <tr key={item.id || item.productId}><td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small></td><td><div className="d-flex flex-nowrap align-items-center gap-3" role="group" aria-label={`Modo de venta de ${item.name}`}>{[{ value: "quantity", label: "Por cantidad" }, { value: "amount", label: "Por monto" }].map((mode) => <label key={mode.value} className="sale-entry-checkbox"><input className="form-check-input" type="checkbox" disabled checked={(item.entryMode || "quantity") === mode.value} /><span>{mode.label}</span></label>)}</div></td><td><div className="input-group flex-nowrap" style={{ width: "max-content" }}><input className="form-control" style={{ width: "calc(5ch + 2.5rem)", flex: "0 0 auto" }} readOnly aria-label={`Valor vendido de ${item.name}`} value={item.entryMode === "amount" ? item.amount : item.quantity} /><span className="input-group-text">{item.entryMode === "amount" ? "MXN" : item.unit}</span></div>{item.entryMode === "amount" && <small className="d-block text-muted">≈ {Number(item.quantity.toFixed(3))} {item.unit}</small>}{item.webPhysicalQuantity && <small className="d-block">Entregado: {item.webPhysicalQuantity.quantity} {item.webPhysicalQuantity.unit}</small>}</td><td className="text-nowrap text-end">{money(item.amount)}{item.priceTier === "wholesale" && <small className="sale-wholesale">Tarifa de mayoreo</small>}{item.discountRate > 0 && <small className="sale-wholesale" title={`Descuento: ${money(item.discount)}`}>Mayoreo −15%</small>}</td></tr>)}</tbody>)}</table></div>
+                    {group.items.map((item) => <tr key={item.id || item.productId}><td>{item.name}<small className="d-block text-muted">{money(item.price)} / {item.unit}</small></td><td>{item.entryMode === "amount" ? "Por monto" : "Por cantidad"}</td><td className="sale-quantity-unit"><span>{item.entryMode === "amount" ? money(item.amount) : quantityLabel(item.quantity,item.unit)}</span>{item.entryMode === "amount" && <small className="d-block text-muted">≈ {Number(item.quantity.toFixed(3))} {item.unit}</small>}{item.webPhysicalQuantity && <small className="d-block">Entregado: {item.webPhysicalQuantity.quantity} {item.webPhysicalQuantity.unit}</small>}</td><td className="text-nowrap text-end">{money(item.amount)}{item.priceTier === "wholesale" && <small className="sale-wholesale">Tarifa de mayoreo</small>}{item.discountRate > 0 && <small className="sale-wholesale" title={`Descuento: ${money(item.discount)}`}>Mayoreo −15%</small>}</td></tr>)}</tbody>)}</table></div>
             </section>{(selected.origin === 'MOVIL' || selected.commerceVersion) && persistence && <Suspense fallback={<p role="status">Cargando ticket e historial...</p>}><MobileSaleCorrection sale={sales.find(s => s.id === selected.id) || selected} persistence={persistence} /></Suspense>} <details className="sale-section"><summary>Historial de modificaciones</summary>{(sales.find(s => s.id === selected.id)?.history || selected.history || []).map((h, i) => <p key={i}>{h.at} · {h.channel} · {h.action}{h.monetaryAfter && <span> · Documento anterior {money(h.monetaryBefore.collectedCents / 100)}; revisado {money(h.monetaryAfter.collectedCents / 100)}. Liquidación de la diferencia no registrada.</span>}</p>)}</details>{selected.notes && <details className="sale-notes"><summary>Notas de la venta</summary><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{selected.notes}</p></details>}
             </>}</DialogContent>
             <DialogActions className="sale-modal-actions"><div className="sale-footer-total"><span>{selected?.monetarySettlement ? 'Total revisado' : 'Total'} · MXN</span><WebMoneyBreakdown monetary={selected?.monetary} /><strong>{money(selected?.total || 0)}</strong></div><Button color="inherit" onClick={() => setSelected(null)}>Cerrar detalle</Button></DialogActions>

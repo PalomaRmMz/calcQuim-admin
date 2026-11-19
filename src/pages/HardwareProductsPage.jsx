@@ -42,7 +42,7 @@ export default function HardwareProductsPage(){
  </ContentPanel><details className="mt-3"><summary>Herramientas de carga inicial</summary><ReferenceImport activity="JARCERIA"/></details>
  {editing&&<ProductEditor product={editing} categories={categories} presentations={presentations.filter(r=>String(r.productId)===String(editing.id))} onClose={()=>setEditing(null)} onSave={async input=>{const result=await persistence.command('saveHardwareProductBundle',[input]);if(result.ok){setNotice('Producto y presentaciones guardados.');setEditing(null);}return result;}}/>}{tool==='categories'&&<HardwareCategories categories={categories} onCommand={persistence.command} onClose={()=>setTool(null)}/ >}{tool==='batch'&&<HardwareBatch categories={categories} onClose={()=>setTool(null)} onSave={async input=>{const result=await persistence.command('saveHardwareProductsBatch',[input]);if(result.ok){setTool(null);setNotice('Lote completo guardado.');}return result;}}/>}</section>;
 }
-export function ProductEditor(props){return props.product.id?<AdvancedProductEditor {...props}/>:<QuickHardwareCreate {...props} AdvancedEditor={AdvancedProductEditor}/>;}
+export function ProductEditor(props){return props.product.id?<AdvancedProductEditor {...props}/>:<QuickHardwareCreate {...props}/>;}
 function AdvancedProductEditor({product,categories,presentations,onClose,onSave}){
  const [initialInventory,setInitialInventory]=useState(emptyProductInitial);
  const [draft,setDraft]=useState(product),[rows,setRows]=useState(()=>presentations.length?presentations.map(p=>({...p,key:p.id})):[newPresentation()]),[error,setError]=useState(''),[busy,setBusy]=useState(false);

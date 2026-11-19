@@ -15,6 +15,7 @@ function ProductFormModal({
 }) {
     const {wholesalePricing} = useContext(CatalogContext) || {};
     const persistence=useContext(PersistenceContext);
+    const [minimum,setMinimum]=useState('');
     const [initialInventory,setInitialInventory]=useState(emptyProductInitial);
     const [saving,setSaving]=useState(false);
     const [wholesalePrice,setWholesalePrice] = useState(product?.wholesalePrice ?? '');
@@ -109,6 +110,7 @@ function ProductFormModal({
             };
         }
 
+        if(!isEditing&&persistence&&minimum!=='')productData.minimum=minimum;
         if(!isEditing&&persistence&&initialInventory.enabled)productData.initialInventory=productInitialPayload(initialInventory,unit);
         setSaving(true);
         let result;try{result=await onSave(productData);}catch(e){setError(e.message);return;}finally{setSaving(false);}
@@ -327,6 +329,9 @@ function ProductFormModal({
                                     </>
                                 )}
 
+                                {!isEditing&&persistence&&<label className="form-label d-block">Inventario mínimo ({unit}, opcional)
+                                    <input className="form-control" type="number" inputMode="decimal" min="0" step={unit==='pieza'?'1':'0.000001'} placeholder="Sin configurar" value={minimum} onChange={e=>setMinimum(e.target.value)}/>
+                                </label>}
                                 {!isEditing&&persistence&&<InitialInventoryFields value={initialInventory} onChange={setInitialInventory} unit={unit}/>}
                                 {isEditing&&persistence&&<p className="form-text">El inventario se administra desde Inventarios. Si ya tiene inicial, utiliza Correcciones.</p>}
                                 {error && (

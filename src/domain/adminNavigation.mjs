@@ -4,7 +4,7 @@ export const adminNavigation=[
  {label:'Productos de jarcería',icon:'box',path:'/productos-jarceria',children:[['Productos','/productos-jarceria'],['Categorías','/productos-jarceria/categorias']]},
  {label:'Compras',icon:'cart',path:'/compras',children:[['Historial y captura','/compras'],['Abastecimiento de limpieza','/compras/abastecimiento']]},
  {label:'Comparadores',icon:'chart',path:'/comparadores',children:[['Comparador de limpieza','/comparadores/limpieza'],['Comparador de jarcería','/comparadores/jarceria']]},
- {label:'Inventarios',icon:'box',path:'/inventarios',children:[['Inventario de limpieza','/inventarios/limpieza'],['Inventario de jarcería','/inventarios/jarceria']]},
+ {label:'Inventarios',icon:'box',path:'/inventarios',children:[['Existencias de limpieza','/inventarios/limpieza'],['Existencias de jarcería','/inventarios/jarceria']]},
  {label:'Lavandería',icon:'box',path:'/lavanderia'},
  {label:'Ventas',icon:'cart',path:'/ventas'},
  {label:'Reportes',icon:'chart',path:'/reportes',...(import.meta.env?.CALCQUIM_OPERATIONAL?{}:{children:[['Reportes existentes','/reportes'],['Reportes comerciales','/reportes/comerciales']]})},
