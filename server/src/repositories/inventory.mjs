@@ -1,4 +1,4 @@
-import {applySupplyMovement,supplyStocks,supplyStockView} from '../services/supplyInventory.mjs';
+import {applySupplyMovement,supplyStocks,supplyStockView,supplyPackagesAvailable} from '../services/supplyInventory.mjs';
 import {presentationMovement,presentationStock} from './presentationInventory.mjs';
 import {ApiError} from '../services/commands.mjs';
 import { randomUUID } from 'node:crypto';
@@ -9,6 +9,7 @@ import { inventoryDecimal,inventoryText } from '../../../src/services/inventoryU
 export function inventorySnapshot(view,version=3){
   const snapshot=JSON.parse(JSON.stringify(view));
   delete snapshot.packInventory;
+  delete snapshot.supplyActivationEnabled;
   if(version===3)return snapshot;
   delete snapshot.initialCaptureMode;
   if(version===2)return snapshot;
@@ -63,7 +64,7 @@ export async function readInventory(c,data){
     return events[0]?.action==='purchase_review_required';
   }).map(p=>({purchaseId:p.id,date:p.date,voided:!!p.voidedAt}));
   const supplies=supplyStockView(await supplyStocks(c),data);
-  const view={...(supplies.length?{supplies}:{}),enabled:true,initialControlEnabled:true,initialCaptureMode:'automatic',policy:await inventoryPolicy(c),products:products.filter(p=>!supplies.some(s=>s.productId===String(p.productId))),pending,movements,changes,purchaseReviews};
+  const view={supplyActivationEnabled:await supplyPackagesAvailable(c),...(supplies.length?{supplies}:{}),enabled:true,initialControlEnabled:true,initialCaptureMode:'automatic',policy:await inventoryPolicy(c),products:products.filter(p=>!supplies.some(s=>s.productId===String(p.productId))),pending,movements,changes,purchaseReviews};
   const split=await presentationStock(c);
   const grouped=new Map();
   for(const row of split){

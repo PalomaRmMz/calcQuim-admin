@@ -24,6 +24,16 @@ import { useCatalog } from "./context/CatalogHooks.js";
 import Feedback from "./components/Feedback";
 import ReportsPage from './pages/ReportsPage';
 import InventoryPage from './pages/InventoryPage';
+import SupplyInventoryPage from './pages/SupplyInventoryPage';
+
+const cleaningTabs = [['Productos','/productos'],['Categorías','/productos/categorias'],['Líneas','/productos/lineas'],['Grupos de precio','/productos/grupos']];
+const hardwareTabs = [['Productos','/productos-jarceria'],['Categorías','/productos-jarceria/categorias']];
+
+function CatalogTabs({label,links}) {
+  return <nav className="page-tabs mb-3" aria-label={label}>
+    {links.map(([name,path])=><NavLink key={path} end to={path} className="page-tab">{name}</NavLink>)}
+  </nav>;
+}
 
 function App({connection}) {
   const { pathname } = useLocation();
@@ -57,13 +67,14 @@ function App({connection}) {
           {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/comercial" element={<Navigate to="/reportes/comerciales" replace/>}/>}
           {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/reportes/comerciales" element={<CommercePage reportOnly/>}/>}
           <Route path="/proveedores" element={<SuppliersPanel/>}/>
-          <Route path="/productos-jarceria" element={<><Header title="Productos de jarcería" subtitle="Administra tu catálogo de Nexo" /><HardwareProductsPage/></>}/>
-          <Route path="/productos-jarceria/categorias" element={<><Header title="Categorías de jarcería" subtitle="Organiza el catálogo de jarcería" /><HardwareCategoriesPage/></>}/>
+          <Route path="/productos-jarceria" element={<><Header title="Productos de jarcería" subtitle="Administra tu catálogo de Nexo" /><CatalogTabs label="Catálogo de jarcería" links={hardwareTabs}/><HardwareProductsPage/></>}/>
+          <Route path="/productos-jarceria/categorias" element={<><Header title="Categorías de jarcería" subtitle="Organiza el catálogo de jarcería" /><CatalogTabs label="Catálogo de jarcería" links={hardwareTabs}/><HardwareCategoriesPage/></>}/>
           <Route path="/lavanderia" element={<LaundryPage/>}/>
           <Route path="/comparadores/limpieza" element={<CleaningScope><ProcurementComparator/></CleaningScope>}/>
           <Route path="/comparadores/jarceria" element={<HardwareComparatorPage/>}/>
           <Route path="/inventarios/limpieza" element={<InventoryPage key="cleaning" activity="LIMPIEZA"/>}/>
           <Route path="/inventarios/jarceria" element={<InventoryPage key="hardware" activity="JARCERIA"/>}/>
+          <Route path="/inventarios/insumos" element={<SupplyInventoryPage/>}/>
           <Route path="/compras/proveedores" element={<Navigate to="/proveedores" replace/>}/>
           <Route path="/compras/comparador" element={<Navigate to="/comparadores/limpieza" replace/>}/>
           <Route path="/compras/planificacion" element={<PurchasePlanningPage/>}/>
@@ -86,10 +97,7 @@ function App({connection}) {
                   title={sectionTitles[pathname] || 'Productos de limpieza'}
                   subtitle="Administra tu catálogo de Nexo"
                 />
-                <nav className="page-tabs mb-3" aria-label="Catálogo de limpieza">
-                  {[['Productos','/productos'],['Categorías','/productos/categorias'],['Líneas','/productos/lineas'],['Grupos de precio','/productos/grupos']].map(([label,path])=>
-                    <NavLink key={path} end to={path} className={({isActive})=>isActive?'active':''}>{label}</NavLink>)}
-                </nav>
+                <CatalogTabs label="Catálogo de limpieza" links={cleaningTabs}/>
                 <CleaningScope><ProductsModule /></CleaningScope>
               </>
             }

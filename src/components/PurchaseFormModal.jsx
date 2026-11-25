@@ -1,3 +1,4 @@
+import {inventoryDecimal,inventoryText} from '../services/inventoryUnits.js';
 import PurchaseInventoryCorrection from './PurchaseInventoryCorrection';
 import PurchaseDialog,{PurchaseArticleSearch} from './PurchaseDialog';
 import { SourceForm } from './PurchasedItemForms';
@@ -43,12 +44,21 @@ export default function PurchaseFormModal({ purchase, onClose, onSave, activity=
         && normalizeText(article.name).includes(normalizeText(search.trim()))
         && !existingSupplies.some(source => source.purchasedItemId === article.id)) : [];
     const directIds = new Set(products.filter((p) => existingSupplies.some(s => s.sourcingType === "READY_TO_USE" && (s.outputProductId === p.id || data.supplyConversions?.some(c => c.active && c.purchasedItemId === s.purchasedItemId && c.outputProductId === p.id)))).map((p) => p.id));
-    const bottledSupplies = new Set(rawProducts.filter(p => p.inventorySupplyId).map(p => p.inventorySupplyId));
+    const stockFormats = new Map(rawProducts.filter(p => p.inventorySupplyId).map(p => [p.inventorySupplyId,p.supplyPackage??{liters:'1',label:'Botella'}]));
     const productMap = new Map(products.map((p) => [p.id, p]));
     const options = [...existingSupplies.filter((s) => s.active && (s.outputProductId == null || productMap.get(s.outputProductId)?.active)), ...(products.filter((p) => p.active && !p.inventorySupplyId && !directIds.has(p.id)).map((p) => ({ ...directSupply(p, supplierId), purchaseQuantity: null, directProductId: p.id })))]
         .filter((s) => !items.some((i) => i.supplyItemId === s.id || (s.directProductId != null && i.directProductId === s.directProductId)))
         .map((s) => { const p = productMap.get(s.outputProductId) || products.find(product => data.supplyConversions?.some(c => c.active && c.purchasedItemId === s.purchasedItemId && c.outputProductId === product.id)); return { ...s, choiceLabel: p && s.sourcingType === "READY_TO_USE" ? getProductChoiceLabel(p, products, categories, productLines) : s.name, classification: `${p?.displayName || ""} ${categories.find((c) => c.id === p?.categoryId)?.name || ""} ${productLines.find((l) => l.id === p?.lineId)?.name || ""} ${SOURCING_TYPES[s.sourcingType]} ${supplyPresentation(s)}` }; }).concat(missingSupplierArticles.map(article => ({ id: `configure:${article.id}`, purchasedItemId: article.id, name: article.name, classification: SOURCING_TYPES[article.sourcingType], requiresSource: true })));
-    const calculated = items.map(calculatePurchaseItem);
+    const calculated = items.map(item=>{
+        const format=stockFormats.get(item.purchasedItemId);
+        if(!format||item.packageQuantity==null)return calculatePurchaseItem(item);
+        try{
+            const packages=inventoryDecimal(item.packageQuantity);
+            if(packages<=0n||packages%1000000n)return null;
+            const quantity=inventoryText(packages/1000000n*inventoryDecimal(format.liters));
+            return calculatePurchaseItem({...item,quantity});
+        }catch{return null;}
+    });
     const sortedGroups = groupPurchaseItems(items, products, categories, productLines);
     const total = Math.round(calculated.reduce((sum, item) => sum + (item?.total || 0), 0) * 100) / 100;
     function change(id, data) { setItems((current) => current.map((item) => item.id === id ? { ...item, ...data } : item)); }
@@ -78,10 +88,10 @@ export default function PurchaseFormModal({ purchase, onClose, onSave, activity=
                     {group.items.map(({ item, index }) => <tr key={item.id}>
                     <td>{item.name}<small className="d-block text-muted">{item.productNameSnapshot} · {SOURCING_TYPES[item.sourcingType]} · {supplyPresentation(item)}</small>{!purchase && data.supplyModelVersion === 2 && data.supplyItems.some(s => s.id === item.supplyItemId) && <button type="button" className="btn btn-link btn-sm p-0" onClick={() => setEditingSource(data.supplyItems.find(s => s.id === item.supplyItemId))}>Revisar proveedor y contenido</button>}
                                         {item.sourcingType !== "READY_TO_USE" && <details><summary>Ver rendimiento</summary><PurchaseItemOutcome item={calculated[index] || { ...item, total: null }} /></details>}</td>
-                    <td><PurchaseLineQuantity id={item.id} name={item.name} unit={bottledSupplies.has(item.purchasedItemId)?'botella':item.unit} step={bottledSupplies.has(item.purchasedItemId)?'1':'any'} value={item.quantity} onChange={quantity => change(item.id, { quantity })} /></td>
+                    <td><PurchaseLineQuantity id={item.id} name={item.name} unit={stockFormats.has(item.purchasedItemId)?'envase':item.unit} step={stockFormats.has(item.purchasedItemId)?'1':'any'} value={stockFormats.has(item.purchasedItemId)?item.packageQuantity??(item.quantity===''?'':Number(item.quantity)/Number(stockFormats.get(item.purchasedItemId).liters)):item.quantity} onChange={quantity=>change(item.id,stockFormats.has(item.purchasedItemId)?{packageQuantity:quantity}:{quantity})} /></td>
                     <td className="text-nowrap">Sin costo conocido</td>
                     <td><PurchaseLineCostMode id={item.id} name={item.name} value={item.costMode} onChange={mode => change(item.id, { costMode: mode, cost: calculated[index] ? (mode === "total" ? calculated[index].total : Number(calculated[index].unitCost.toFixed(6))) : "" })} /></td>
-                    <td><PurchaseLineCost id={item.id} name={item.name} mode={item.costMode} value={item.cost} onChange={cost => change(item.id, { cost })} /></td>
+                    <td>{stockFormats.has(item.purchasedItemId)&&item.costMode==='unit'&&<small className="d-block">Costo por litro</small>}<PurchaseLineCost id={item.id} name={item.name} mode={item.costMode} value={item.cost} onChange={cost => change(item.id, { cost })} /></td>
                     <td className="text-nowrap"><PurchaseLineTotal total={calculated[index]?.total} unitCost={calculated[index]?.unitCost} unit={item.unit} /></td>
                     <td><TableActions label={item.name} deleteLabel="Quitar" onDelete={() => setItems(items.filter((i) => i.id !== item.id))} /></td>
                 </tr>)}

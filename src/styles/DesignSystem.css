@@ -105,8 +105,10 @@ summary { cursor: pointer; }
 .purchase-outcome small { font-size: 12px; color: var(--cq-muted); }
 .purchase-outcome strong { font-size: 13px; font-weight: 600; }
 .preserve-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.page-tabs { max-width: 100%; overflow-x: auto; }
-.page-tab { white-space: nowrap; flex-shrink: 0; }
+.page-tabs { display: flex; flex-wrap: wrap; gap: .25rem; border-bottom: 1px solid var(--cq-border); }
+.page-tab { padding: .55rem .8rem; border-bottom: 2px solid transparent; color: var(--cq-text); text-decoration: none; }
+.page-tab:hover { background: var(--cq-surface-subtle); }
+.page-tab[aria-current="page"] { color: var(--bs-primary); background: var(--cq-surface-subtle); border-bottom-color: currentColor; font-weight: 600; }
 .content-panel, .summary-card { border-radius: var(--cq-radius-lg); box-shadow: var(--cq-shadow-card); }
 .content-panel-header > div { min-width: 0; }
 .summary-card h3 { overflow-wrap: anywhere; }
@@ -143,7 +145,6 @@ body { background: var(--cq-background); }
     .filter-bar > div { flex-basis: 100%; max-width: none; }
     .app-dialog :is(.sale-modal-header, .sale-detail-header, .sale-modal-body, .sale-detail-body, .sale-modal-actions, .sale-detail-footer) { padding: 12px 14px; }
     .comparison-summary { padding: 14px; }
-    .page-tabs .page-tab { flex: 0 0 auto; }
 }
 
 .app-dialog :is(.app-modal-header, .sale-modal-header, .sale-detail-header) { background: linear-gradient(110deg, #e6eefb, #f2f5fa); border-bottom: 1px solid #d7e1ee; }

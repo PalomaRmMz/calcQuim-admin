@@ -67,6 +67,12 @@ async function insert(c, table, fields, conflict) {
   const update = names.filter(n=>!conflict.includes(n)).map(n=>`${n}=EXCLUDED.${n}`).join(',');
   await c.query(`INSERT INTO ${table} (${names.join(',')}) VALUES (${names.map((_,i)=>`$${i+1}`).join(',')}) ON CONFLICT (${conflict.join(',')}) DO UPDATE SET ${update}`, values);
 }
+export async function insertSupplyInventoryProduct(c,product,position){
+  await c.query('INSERT INTO products(id,position,record,name_key,unit,activity) VALUES($1,$2,$3,$4,$5,$6)',
+    [String(product.id),position,JSON.stringify(product),normalizeText(product.name),product.unit,product.activity]);
+  await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true');
+}
+
 export async function writeDataset(c, data, counters) {
   // Solo se invoca tras reglas de dominio completas. Las FKs diferidas se validan al COMMIT.
   for (const [name, table] of Object.entries(collections)) {

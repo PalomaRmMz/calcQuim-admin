@@ -1,4 +1,3 @@
-import SupplyInventoryPanel from '../components/SupplyInventoryPanel';
 import {webHardwareStockUnit} from '../domain/webHardwarePresentationName.mjs';
 import {cleaningInventoryLabels,filterInventoryProducts,inventoryAttention} from '../domain/inventoryAttention.mjs';
 import {getProductDisplayName} from '../utils/catalogUtils.js';
@@ -60,7 +59,6 @@ export default function InventoryPage({activity='LIMPIEZA'}){
     return <div className="container-fluid py-3">
         <h2>{activity==='JARCERIA'?'Existencias de jarcería':'Existencias de limpieza'}</h2><p className="text-muted">{activity==='JARCERIA'?'Consulta paquetes, piezas sueltas y equivalencias de jarcería. Cada saldo indica su unidad; el total equivalente suma paquetes y sueltos en la unidad base del producto.':'Consulta litros, piezas y movimientos de productos de limpieza. Cada saldo se expresa en la unidad indicada junto al producto.'}</p><p>Las cantidades son aproximadas. Desconocido significa que falta un conteo inicial; no equivale a cero.</p>
         {error&&<p role="alert" className="alert alert-danger">{error}</p>}{notice&&<p role="status" className="alert alert-success">{notice}</p>}
-        {!hardware&&view.supplies?.length>0&&<SupplyInventoryPanel supplies={view.supplies} sales={scopedData.sales} busy={busy} error={error} onSave={save}/>}
         <section className="inventory-overview" aria-label="Resumen de existencias">
           {[["empty","Agotados"],["low","Inventario bajo"],["sufficient","Suficientes"],["unknown","Desconocidos"],["unconfigured","Sin mínimo configurado"],["negative","Por revisar"]].map(([key,label])=><button key={key} type="button" className={`inventory-summary-card inventory-summary-${key} ${only===key?'active':''}`} aria-pressed={only===key} onClick={()=>setOnly(only===key?'':key)}><strong>{products.filter(p=>attention(p).key===key).length}</strong><span>{label}</span></button>)}
         </section>

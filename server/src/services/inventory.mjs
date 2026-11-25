@@ -1,4 +1,4 @@
-import {supplyInventoryCommands,executeSupplyInventory,syncSupplyPurchases,supplySaleBaseline} from './supplyInventory.mjs';
+import {supplyInventoryCommands,executeSupplyInventory,syncSupplyPurchases,supplySaleBaseline,supplyStocks} from './supplyInventory.mjs';
 import {countPresentationStock,presentationStock,validatePresentationStock} from '../repositories/presentationInventory.mjs';
 import {validateWebPhysical} from '../../../src/domain/webSaleCapture.mjs';
 import {checkBaseline} from './inventoryBaseline.mjs';
@@ -168,10 +168,17 @@ export async function executeInventoryCommand(c,data,name,args){
     return movement(c,data,input,input.kind);
   }
   if(name==='inventoryReplenishment'){
+    if(findProduct(data,input.productId).inventorySupplyId&&(await inventoryPolicy(c)).policy.supplyMinimums)
+      fail('Configura el mínimo en Existencias de insumos.');
     const product=findProduct(data,input.productId),account=await inventoryAccount(c,product),why=reason(input,'replenishment');
     const minimum=input.minimum==null||input.minimum===''?null:quantity(input.minimum,input.unit,account.unit);
     const batch=input.usualBatch==null||input.usualBatch===''?null:quantity(input.usualBatch,input.unit,account.unit);
     if((minimum!==null&&inventoryDecimal(minimum)<0n)||(batch!==null&&inventoryDecimal(batch)<=0n))fail('Umbral o lote no válido.');
+    if(product.inventorySupplyId&&minimum!==null){
+      const stock=(await supplyStocks(c)).find(s=>s.product_id===String(product.id));
+      if(!stock||inventoryDecimal(minimum)%inventoryDecimal(stock.bottle_liters))
+        fail('Configura el m?nimo en envases completos.');
+    }
     const previous=(await c.query('SELECT * FROM inventory_replenishment WHERE product_id=$1',[String(product.id)])).rows[0]??null;
     await c.query('INSERT INTO inventory_replenishment(product_id,minimum,usual_batch,unit) VALUES($1,$2,$3,$4) ON CONFLICT(product_id) DO UPDATE SET minimum=EXCLUDED.minimum,usual_batch=EXCLUDED.usual_batch,unit=EXCLUDED.unit',[String(product.id),minimum,batch,account.unit]);
     await inventoryChange(c,'replenishment',{productId:product.id,previous,next:{minimum,batch,unit:account.unit},reason:why.text,...why.metadata});return {};

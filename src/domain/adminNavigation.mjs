@@ -6,7 +6,7 @@ export const adminNavigation=[
  ]},
  {id:'catalogo',label:'Catálogo e inventarios',icon:'box',items:[
   {label:'Productos',links:[['Productos de limpieza','/productos'],['Productos de jarcería','/productos-jarceria']]},
-  {label:'Inventarios',links:[['Existencias de limpieza','/inventarios/limpieza'],['Existencias de jarcería','/inventarios/jarceria']]},
+  {label:'Inventarios',links:[['Existencias de limpieza','/inventarios/limpieza'],['Existencias de jarcería','/inventarios/jarceria'],['Existencias de insumos','/inventarios/insumos']]},
   {label:'Proveedores',path:'/proveedores'},
  ]},
  {id:'analisis',label:'Análisis',icon:'chart',items:[

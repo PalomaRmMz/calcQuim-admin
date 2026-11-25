@@ -6,7 +6,7 @@ import {packEnabled} from '../repositories/packInventory.mjs';
 import {syncProductInitialInventory} from './productInitialInventory.mjs';
 import { createHash } from 'node:crypto';
 import { schemaName } from '../db/migrate.mjs';
-import { readDataset, writeDataset } from '../repositories/dataset.mjs';
+import { readDataset, writeDataset, insertSupplyInventoryProduct } from '../repositories/dataset.mjs';
 import { ApiError, executeCommand } from './commands.mjs';
 import { inventoryAvailable,readInventory,inventoryPolicy } from '../repositories/inventory.mjs';
 import { inventoryCommands,executeInventoryCommand,syncInventory } from './inventory.mjs';
@@ -89,6 +89,7 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
         }
         catch(error) {if(error instanceof ApiError) throw error; throw new ApiError(422,'DOMAIN_VALIDATION',error.message);}
         if(name==='configureWebPaymentPolicy'){await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true');}
+        else if(name==='enableSupplyInventory')await insertSupplyInventoryProduct(c,current.data.products.at(-1),current.data.products.length-1);
         else if(inventoryCommands.includes(name)) { if(JSON.stringify(before)!==JSON.stringify(current.data))await writeDataset(c,current.data,current.counters); else await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true'); }
         else {await writeDataset(c,current.data,current.counters);await syncProductInitialInventory(c,before,current.data,name,args,{channel});await syncInventory(c,before,current.data,name,args);
           if(name==='saveHardwarePurchase'||name==='editHardwarePurchase'){

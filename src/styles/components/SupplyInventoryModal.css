@@ -1,0 +1,124 @@
+.supply-modal-content,
+.supply-modal-form fieldset {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: .65rem;
+    min-width: 0;
+}
+
+.supply-modal-content p,
+.supply-modal-context ul,
+.supply-modal-form .procurement-field {
+    margin: 0;
+}
+
+.supply-modal-summary,
+.supply-modal-buttons,
+.supply-modal-count {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem .8rem;
+    align-items: center;
+}
+
+.supply-modal-summary {
+    font-size: .875rem;
+}
+
+.supply-modal-context,
+.supply-modal-selectors {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: .65rem 1rem;
+}
+
+.supply-modal-context h3,
+.supply-modal-history h3 {
+    font-size: .875rem;
+    margin: 0 0 .25rem;
+    font-weight: 600;
+}
+
+.supply-modal-context ul {
+    list-style: none;
+    padding: 0;
+}
+
+.supply-modal-context li {
+    font-size: .875rem;
+    overflow-wrap: anywhere;
+}
+
+.supply-modal-form .form-control,
+.supply-modal-form .form-select {
+    min-height: 2.5rem;
+}
+
+.supply-modal-form .form-select {
+    text-overflow: ellipsis;
+}
+
+.supply-modal-quantity input {
+    width: min(100%, 8rem);
+}
+
+.supply-modal-reason {
+    width: min(100%, 32rem);
+}
+
+.supply-modal-count p {
+    font-size: .875rem;
+}
+
+@media (max-width: 575px) {
+    .supply-modal-context,
+    .supply-modal-selectors {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.supply-modal-history {
+    min-width: 0;
+}
+
+.supply-modal-summary,
+.supply-modal-context {
+    padding: .55rem .65rem;
+    border-radius: .45rem;
+    background: var(--cq-surface-subtle);
+}
+
+.supply-modal-confirm {
+    display: flex;
+    gap: .5rem;
+    align-items: baseline;
+}
+
+.supply-history-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: .8125rem;
+    line-height: 1.35;
+}
+
+.supply-history-table :is(th, td) {
+    padding: .3rem .35rem;
+    border-bottom: 1px solid var(--cq-border);
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.supply-history-table th:last-child {
+    width: 29%;
+}
+
+@media (max-width: 575px) {
+    .supply-history-table :is(th, td) {
+        padding-inline: .2rem;
+    }
+    .supply-history-table th:last-child {
+        width: 25%;
+    }
+}
