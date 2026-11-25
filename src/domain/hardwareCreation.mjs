@@ -2,7 +2,7 @@ export const hardwareIdentity = value => String(value ?? '').normalize('NFKD').r
   .replace(/(\d)\s*(ml|kg|g|l)\b/g,'$1 $2').replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).sort().join(' ');
 export function suggestHardwareCategory(name, categories) {
   const n=hardwareIdentity(name);
-  const label=/inodoro|bano|harpic|lysol|bomba/.test(n)?'Productos para baño':/guante|cepillo/.test(n)?'Accesorios de limpieza':/tocador|shampoo|manos|naturella|toalla sanitaria/.test(n)?'Higiene personal':/insecticida|matamoscas|tron/.test(n)?'Control de plagas':/muriatico|fabuloso|limpiahornos/.test(n)?'Limpiadores envasados':null;
+  const label=/inodoro|bano|harpic|lysol|bomba/.test(n)?'Productos para baño':/guante|cepillo/.test(n)?'Accesorios de limpieza':/tocador|shampoo|manos|naturel+a|toalla sanitaria/.test(n)?'Higiene personal':/insecticida|matamoscas|tron/.test(n)?'Control de plagas':/muriatico|fabuloso|limpiahornos/.test(n)?'Limpiadores envasados':null;
   return categories.find(c=>c.active&&c.name===label)?.id??null;
 }
 export function quickPresentations(form) {

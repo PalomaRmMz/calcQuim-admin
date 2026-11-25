@@ -265,11 +265,10 @@ export async function syncInventory(c,before,data,name,args){
         const scope=intent.scope;if(!['line','category'].includes(scope))fail('Selecciona línea o categoría para el desglose.');
         const scopeId=scope==='line'?product.lineId:product.categoryId;if(scopeId==null)fail('El producto no pertenece a ese grupo.');
         await addPending(c,sale,ordinal,item,{scope,scopeId,reason:item.entryMode==='amount'?'amount':'group'});
-      }else if(!exactSaleQuantity(item,product,sale.origin))await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:item.entryMode==='amount'?'amount':'quantity_review'});
-      else{
+      }else{
+        const physical=exactSaleQuantity(item,product,sale.origin);
+        if(physical===null){await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:item.entryMode==='amount'?'amount':'quantity_review'});continue;}
         try{await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date});}catch(error){if(error.code!=='INVENTORY_BASELINE_REVIEW_REQUIRED')throw error;await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'quantity_review'});continue;}
-        let physical;
-        try{physical=exactSaleQuantity(item,product,sale.origin);}catch{await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'quantity_review'});continue;}
         await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:'Salida por venta con cantidad física',saleId:sale.id,saleOrdinal:ordinal,originKey:`sale:${sale.id}:${ordinal}`,reference:{physicalPresentation:item.presentationSnapshot??null,...(item.webPhysicalQuantity?{webPhysicalQuantity:item.webPhysicalQuantity}:{}),folio:sale.folio,quantityEvidence:item.entryMode==='amount'?(sale.origin==='WEB'?(item.webPhysicalQuantity?'web_confirmed_quantity_v1':'web_amount_rounded_1_decimal'):'exact_monetary_conversion'):'captured_quantity',quantityNumerator:item.quantityNumerator??null,quantityDenominator:item.quantityDenominator??null,reasonCode:'sale_known_quantity',reasonCatalogVersion:1,reasonSource:'system'}});
       }
     }

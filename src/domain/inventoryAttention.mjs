@@ -2,6 +2,11 @@ import {inventoryDecimal} from '../services/inventoryUnits.js';
 import {getProductChoiceLabels,normalizeText} from '../utils/catalogUtils.js';
 import {unitLabel} from '../utils/units.js';
 
+export const requiresInventoryPurchase = key => key === 'empty' || key === 'low';
+export const cleaningInventoryLabels = {
+ empty:'Agotado', low:'Inventario bajo', sufficient:'Existencia suficiente', unknown:'Sin conteo confirmado',
+};
+
 function decimal(value){
  try{return inventoryDecimal(value);}catch{return null;}
 }
@@ -14,7 +19,7 @@ export function inventoryAttention(product, pack) {
  if(amount<0n)return {key:'negative',label:'Cantidad por revisar',tone:'danger',quantity};
  if(amount===0n)return {key:'empty',label:'Agotado',tone:'danger',quantity};
  if(minimum===null)return {key:'unconfigured',label:'Mínimo sin configurar',tone:'secondary',quantity};
- if(amount<=minimum)return {key:'low',label:'Inventario bajo',tone:'warning',quantity,belowMinimum:amount<minimum};
+ if(amount<=minimum)return {key:'low',label:'Inventario bajo',tone:'warning',quantity};
  return {key:'sufficient',label:'Existencia suficiente',tone:'success',quantity};
 }
 
@@ -25,7 +30,7 @@ export function filterInventoryProducts(products,{activity,category,line,product
  const hardware=activity==='JARCERIA';
  return products.filter(product=>(!category||String(hardware?product.hardwareCategoryId:product.categoryId)===category)&&
   (hardware||!line||String(product.lineId)===line)&&(!productId||String(product.productId)===productId)&&
-  (!only||(only==='attention'?attention(product).key!=='sufficient':attention(product).key===only)));
+  (!only||(only==='purchase'?requiresInventoryPurchase(attention(product).key):only==='attention'?attention(product).key!=='sufficient':attention(product).key===only)));
 }
 
 export function inventoryShoppingList(rows,{activity,catalogRows=rows,categories=[],productLines=[],presentations=[],packs=[]}){
@@ -53,7 +58,7 @@ export function inventoryShoppingList(rows,{activity,catalogRows=rows,categories
  const groups={empty:[],low:[]};
  for(const product of rows){
   const id=String(product.productId),state=inventoryAttention(product,packById.get(id));
-  if(state.key!=='empty'&&!state.belowMinimum)continue;
+  if(!requiresInventoryPurchase(state.key))continue;
   const label=names.get(id)??compact(product.name);
   const name=nameCounts.get(normalizeText(label))>1?`${label} (#${id})`:label;
   const unit=unitLabel(product.unit);
@@ -66,7 +71,7 @@ export function inventoryShoppingList(rows,{activity,catalogRows=rows,categories
   .sort((a,b)=>a.name.localeCompare(b.name,'es'))
   .map(item=>`• ${item.name} · ${item.detail}`).join('\n'):'';
  return `*Lista de compras · ${activity==='JARCERIA'?'Jarcería':'Limpieza'}*`+
-  section('Agotados',groups.empty)+section('Por debajo del mínimo',groups.low);
+  section('Agotados',groups.empty)+section('En el mínimo o por debajo',groups.low);
 }
 export function packDescription(pack,unit='piezas') {
  if(!pack?.known)return 'Desglose de paquetes y sueltos sin confirmar.';

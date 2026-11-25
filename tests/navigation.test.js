@@ -18,7 +18,9 @@ test("navegación separa administración y operación manteniendo el proveedor c
     storage.setItem(STORAGE_KEYS.products, JSON.stringify([{ id: 1, name: "Producto prueba", unit: "litro", active: true, price: 12 }]));
     try {
         const { default: Root } = await server.ssrLoadModule("/src/ApplicationRoot.jsx");
-        const renderRoute = path => renderToString(React.createElement(MemoryRouter, { initialEntries: [path] }, React.createElement(Root)));
+        const theme = createTheme({ components: { MuiDialog: { defaultProps: { disablePortal: true } } } });
+        const renderRoute = path => renderToString(React.createElement(ThemeProvider, { theme },
+            React.createElement(MemoryRouter, { initialEntries: [path] }, React.createElement(Root))));
         const tabs = html => [...html.matchAll(/<button[^>]*role="tab"[^>]*>(.*?)<\/button>/g)].map(match => match[1]);
         const before = [...values];
         const purchases = renderRoute("/compras");
@@ -28,13 +30,17 @@ test("navegación separa administración y operación manteniendo el proveedor c
         const administration = renderRoute("/proveedores");
         assert.deepEqual(tabs(administration), []);
         assert.ok(administration.includes("Nuevo proveedor"));
-        assert.match(administration, /class="sidebar-item active"[^>]*href="\/proveedores"/);
-        assert.match(administration, /aria-label="Proveedores"/);
+        assert.match(administration, /class="sidebar-child active"[^>]*href="\/proveedores"/);
+        assert.match(administration, /aria-label="Catálogo e inventarios" aria-expanded="true"/);
+        assert.match(renderRoute("/"), /Bienvenida a Nexo/);
+        assert.doesNotMatch(renderRoute("/"), /href="\/administracion\/datos"/);
+        const newPurchase=renderRoute("/compras?nueva=1");
+        assert.match(newPurchase,/Nueva compra[\s\S]*Selecciona la actividad[\s\S]*Productos de limpieza[\s\S]*Jarcería[\s\S]*Cancelar/);
         for (const [path, expected] of [["/productos", "Lista de productos"], ["/productos/categorias", "Lista de categorías"], ["/productos/lineas", "Nueva línea"], ["/productos/grupos", "Grupos de precio"]]) {
             const html = renderRoute(path);
             assert.deepEqual(tabs(html), []);
             assert.ok(html.includes(expected), path);
-            assert.match(html, /aria-label="Productos de limpieza" aria-expanded="true"/);
+            assert.match(html, /aria-label="Catálogo e inventarios" aria-expanded="true"/);
         }
         const router = createMemoryRouter([{ path: "*", element: React.createElement(Root) }], { initialEntries: ["/compras/abastecimiento"] });
         try {
@@ -55,7 +61,6 @@ test("navegación separa administración y operación manteniendo el proveedor c
         const { useProcurement } = await server.ssrLoadModule("/src/context/ProcurementContext.js");
         let api;
         function Probe() { api = useProcurement(); return null; }
-        const theme = createTheme({ components: { MuiDialog: { defaultProps: { disablePortal: true } } } });
         const renderWithProviders = child => renderToString(React.createElement(ThemeProvider, { theme }, React.createElement(CatalogProvider, null, React.createElement(ProcurementProvider, null, child))));
         const refresh = () => renderWithProviders(React.createElement(Probe));
         refresh();
@@ -89,16 +94,16 @@ test("navegación separa administración y operación manteniendo el proveedor c
         const { default: Sidebar } = await server.ssrLoadModule("/src/layout/Sidebar.jsx");
         const collapsed = renderToString(React.createElement(MemoryRouter, { initialEntries: ["/proveedores"] }, React.createElement(Sidebar, { collapsed: true, mobileMenuOpen: true })));
         assert.ok(collapsed.includes("mobile-open") && !collapsed.includes("sidebar-collapsed"));
-        assert.match(collapsed, /aria-label="Proveedores"/);
+        assert.match(collapsed, />Proveedores<\/a>/);
         for (const mobileMenuOpen of [false, true]) {
-            for (const [path, label] of [["/productos/categorias", "Productos de limpieza"], ["/comparadores/limpieza", "Comparadores"], ["/proveedores", null], ["/administracion/datos", "Administración"], ["/ventas", null]]) {
+            for (const [path, label] of [["/", null], ["/productos/categorias", "Catálogo e inventarios"], ["/comparadores/limpieza", "Análisis"], ["/proveedores", "Catálogo e inventarios"], ["/administracion/datos", null], ["/ventas", "Operaciones"]]) {
                 const html = renderToString(React.createElement(MemoryRouter, { initialEntries: [path] }, React.createElement(Sidebar, { mobileMenuOpen })));
                 assert.equal((html.match(/aria-expanded="true"/g) || []).length, label ? 1 : 0);
                 if (label) assert.ok(html.includes(`aria-label="${label}" aria-expanded="true"`));
             }
         }
         const compact = renderToString(React.createElement(MemoryRouter, { initialEntries: ["/comparadores/limpieza"] }, React.createElement(Sidebar, { collapsed: true })));
-        assert.match(compact, /aria-label="Comparadores" aria-expanded="false"/);
+        assert.match(compact, /aria-label="Análisis" aria-expanded="false"/);
 
         for (const [name, props] of [
             ["ProductFormModal", { show: true }], ["CategoryFormModal", { show: true }],

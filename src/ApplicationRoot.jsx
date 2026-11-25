@@ -13,7 +13,7 @@ import App from "./App";
 function AdministrationLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const [mobile, setMobile] = useState(false);
-    return <div className="app-layout">{mobile && <div className="sidebar-overlay" onClick={() => setMobile(false)} aria-hidden="true" />}<Sidebar activeModule="/administracion" collapsed={collapsed} setCollapsed={setCollapsed} mobileMenuOpen={mobile} setMobileMenuOpen={setMobile} /><main className={`main-content ${collapsed ? "main-content-expanded" : ""}`}><Header title="Datos y respaldos" subtitle="Administración de datos de Nexo" onOpenMenu={() => setMobile(true)} /><DataManagementPage /></main></div>;
+    return <div className="app-layout">{mobile && <div className="sidebar-overlay" onClick={() => setMobile(false)} aria-hidden="true" />}<Sidebar collapsed={collapsed} setCollapsed={setCollapsed} mobileMenuOpen={mobile} setMobileMenuOpen={setMobile} /><main className={`main-content ${collapsed ? "main-content-expanded" : ""}`}><Header title="Datos y respaldos" subtitle="Administración de datos de Nexo" onOpenMenu={() => setMobile(true)} /><DataManagementPage /></main></div>;
 }
 
 export default function ApplicationRoot() {

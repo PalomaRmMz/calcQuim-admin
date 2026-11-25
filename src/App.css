@@ -50,6 +50,32 @@
        margin-left: 88px;
    }
 
+   .nexo-utility { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+   .nexo-utility:empty { display:none; }
+   .nexo-connection { margin-left:auto; display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:var(--cq-muted); font-size:13px; }
+   .nexo-home { display:grid; gap:16px; max-width:1280px; }
+   .nexo-home-hero { background:#17263a; color:#fff; border-radius:16px; padding:clamp(18px,4vw,36px); }
+   .nexo-home-hero h2 { font-size:clamp(1.4rem,3vw,2rem); letter-spacing:-.025em; margin:0 0 6px; }
+   .nexo-home-hero p { margin:0; color:#cedcf0; text-transform:capitalize; }
+   .nexo-home-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%, 13rem),1fr)); gap:12px; }
+   .nexo-home-metric, .nexo-home-panel { background:#fff; border:1px solid var(--cq-border,#e2e8f0); border-radius:14px; padding:16px; }
+   .nexo-home-metric { display:flex; align-items:center; gap:12px; }
+   .nexo-home-metric span,.nexo-home-metric strong { display:block; }
+   .nexo-home-metric span { color:#475569; font-size:.85rem; }
+   .nexo-home-metric strong { font-size:1.45rem; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+   .nexo-home-icon { flex:0 0 42px; height:42px; display:grid; place-items:center; border-radius:11px; }
+   .nexo-home-icon-blue { color:#1d4ed8; background:#eff6ff; }
+   .nexo-home-icon-red { color:#a62334; background:#fff1f2; }
+   .nexo-home-icon-amber { color:#854d0e; background:#fffbeb; }
+   .nexo-home-panels { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%, 22rem),1fr)); gap:16px; }
+   .nexo-home-panel h3 { font-size:1.05rem; margin:0 0 14px; }
+   .nexo-home-actions { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%, 11rem),1fr)); gap:8px; }
+   .nexo-home-action,.nexo-home-alerts a { display:flex; gap:9px; align-items:center; padding:10px; color:#20499b; background:#f4f7fd; border-radius:8px; text-decoration:none; }
+   .nexo-home-action span,.nexo-home-alerts span { flex:1; }
+   .nexo-home-action-primary { background:#1d4ed8; color:#fff; }
+   .nexo-home-action:hover,.nexo-home-alerts a:hover { text-decoration:underline; }
+   .nexo-home-alerts { list-style:none; padding:0; display:grid; gap:8px; margin:0; }
+
 
    /* TABLET / LAPTOP PEQUEÑA */
 

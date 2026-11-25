@@ -1,42 +1,56 @@
-import {adminNavigation} from '../domain/adminNavigation.mjs';
-import { useState } from "react";
-import { NavLink, useLocation } from "react-router";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBox, faCartShopping, faChartColumn, faGear, faChevronLeft, faChevronRight, faChevronDown } from "@fortawesome/free-solid-svg-icons";
-import "../styles/layout/Sidebar.css";
+import {activeNavigationSection,adminNavigation,navigationPathMatches} from '../domain/adminNavigation.mjs';
+import {useState} from 'react';
+import {NavLink,useLocation} from 'react-router';
+import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
+import {faBars,faHouse,faBox,faCartShopping,faChartColumn,faChevronLeft,faChevronRight,faChevronDown} from '@fortawesome/free-solid-svg-icons';
+import '../styles/layout/Sidebar.css';
 
-const menuItems=adminNavigation.map(item=>({...item,icon:({box:faBox,cart:faCartShopping,chart:faChartColumn,gear:faGear})[item.icon]}));
+const icons={box:faBox,cart:faCartShopping,chart:faChartColumn};
 
-export default function Sidebar({ collapsed, setCollapsed, mobileMenuOpen, setMobileMenuOpen, activeModule }) {
-    const { pathname, key } = useLocation();
-    const activeGroup = activeModule || menuItems.find(item => item.children && (pathname === item.path || pathname.startsWith(`${item.path}/`)))?.path || null;
-    const route = `${key}:${pathname}:${activeGroup}`;
-    const [accordion, setAccordion] = useState({ route, openGroup: activeGroup });
-    // Reset on every navigation, including Back/Forward to an earlier location key.
-    // Render-time adjustment prevents displaying a stale group for one frame.
-    const openGroup = accordion.route === route ? accordion.openGroup : activeGroup;
-    if (accordion.route !== route) setAccordion({ route, openGroup: activeGroup });
-    const compact = collapsed && !mobileMenuOpen;
-    const closeMenu = () => setMobileMenuOpen?.(false);
-    return <aside className={`sidebar ${compact ? "sidebar-collapsed" : ""} ${mobileMenuOpen ? "mobile-open" : ""}`}>
-        <div className="sidebar-header"><div className="brand-icon">C</div>{!compact && <div className="brand-text"><h1>Nexo</h1><span>Panel de Administración</span></div>}</div>
-        <nav className="sidebar-menu" aria-label="Navegación principal">
-            {menuItems.map(item => {
-                if (!item.children) return <NavLink key={item.path} to={item.path} title={item.label} aria-label={item.label} className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`} onClick={closeMenu}><FontAwesomeIcon icon={item.icon} className="sidebar-item-icon" />{!compact && <span>{item.label}</span>}</NavLink>;
-                const active = activeModule ? activeModule === item.path : pathname === item.path || pathname.startsWith(`${item.path}/`);
-                const expanded = !compact && openGroup === item.path;
-                const controls = `navigation-${item.path.slice(1)}`;
-                return <div key={item.path} className={`sidebar-group ${active ? "parent-active" : ""} ${expanded ? "group-open" : ""}`}>
-                    <button type="button" className="sidebar-item sidebar-parent" title={item.label} aria-label={item.label} aria-expanded={expanded} aria-controls={controls} onClick={() => {
-                        if (compact) setCollapsed?.(false);
-                        setAccordion({ route, openGroup: compact || openGroup !== item.path ? item.path : null });
-                    }}><FontAwesomeIcon icon={item.icon} className="sidebar-item-icon" />{!compact && <><span>{item.label}</span><FontAwesomeIcon icon={expanded ? faChevronDown : faChevronRight} className="sidebar-chevron" /></>}</button>
-                    <div id={controls} className="sidebar-submenu" hidden={!expanded}>
-                        {item.children.map(([label, path]) => <NavLink key={path} end to={path} className={({ isActive }) => `sidebar-child ${isActive || (activeModule === item.path && path === "/administracion/datos") ? "active" : ""}`} onClick={closeMenu}>{label}</NavLink>)}
-                    </div>
-                </div>;
-            })}
-        </nav>
-        <div className="sidebar-footer">{!compact && <div><div>Nexo · Administración</div><small>Uso personal</small></div>}<button type="button" className="sidebar-collapse-button" onClick={() => setCollapsed?.(!collapsed)} aria-label={collapsed ? "Expandir menú" : "Contraer menú"}><FontAwesomeIcon icon={collapsed ? faChevronRight : faChevronLeft} /></button></div>
-    </aside>;
+export function MenuToggle({onClick,expanded}){
+ return <button type="button" className="mobile-menu-button" aria-label="Abrir menú" aria-controls="nexo-sidebar" aria-expanded={expanded} onClick={onClick}>
+  <FontAwesomeIcon icon={faBars}/>
+ </button>;
+}
+
+export default function Sidebar({collapsed,setCollapsed,mobileMenuOpen,setMobileMenuOpen}){
+ const {pathname,key}=useLocation();
+ const active=activeNavigationSection(pathname);
+ const [sectionChoice,setSectionChoice]=useState(null);
+ const openSection=sectionChoice?.key===key?sectionChoice.id:active;
+ const compact=collapsed&&!mobileMenuOpen;
+ const closeMenu=()=>setMobileMenuOpen?.(false);
+ return <aside id="nexo-sidebar" className={`sidebar ${compact?'sidebar-collapsed':''} ${mobileMenuOpen?'mobile-open':''}`}>
+  <div className="sidebar-header"><div className="brand-icon">N</div>{!compact&&<div className="brand-text"><h1>Nexo</h1><span>Panel de Administración</span></div>}</div>
+  <nav className="sidebar-menu" aria-label="Navegación principal">
+   <NavLink end to="/" onClick={closeMenu} className={({isActive})=>`sidebar-item ${isActive?'active':''}`} aria-label="Inicio"><FontAwesomeIcon icon={faHouse} className="sidebar-item-icon"/>{!compact&&'Inicio'}</NavLink>
+   {adminNavigation.map(section=>{
+    const expanded=!compact&&openSection===section.id;
+    const controls=`navigation-${section.id}`;
+    const current=active===section.id&&!compact&&!expanded&&section.items
+      .flatMap(item=>item.links??[[item.label,item.path]])
+      .filter(([,path])=>navigationPathMatches(pathname,path))
+      .sort((a,b)=>b[1].length-a[1].length)[0];
+    return <div key={section.id} className={`sidebar-group ${section.id===active?'parent-active':''}`}>
+     <button type="button" className="sidebar-item sidebar-parent" title={section.label} aria-label={section.label} aria-expanded={expanded} aria-controls={controls}
+      onClick={()=>{if(compact)setCollapsed(false);setSectionChoice({key,id:expanded?null:section.id});}}>
+      <FontAwesomeIcon icon={icons[section.icon]} className="sidebar-item-icon"/>
+      {!compact&&<><span>{section.label}</span><FontAwesomeIcon icon={expanded?faChevronDown:faChevronRight} className="sidebar-chevron"/></>}
+     </button>
+     <div id={controls} className="sidebar-submenu" hidden={!expanded}>
+      {section.items.map(item=>item.links?<div key={item.label}>
+       <div className="sidebar-subheading">{item.label}</div>
+       {item.links.map(([label,path])=><NavLink key={path} end={item.path===path} to={path} onClick={closeMenu} className={({isActive})=>`sidebar-child ${isActive?'active':''}`}>{label}</NavLink>)}
+      </div>:<NavLink key={item.path} to={item.path} onClick={closeMenu} className={({isActive})=>`sidebar-child ${isActive?'active':''}`}>{item.label}</NavLink>)}
+     </div>
+     {current&&<NavLink to={current[1]} className={({isActive})=>`sidebar-child sidebar-current ${isActive?'active':''}`} onClick={closeMenu}>{current[0]}</NavLink>}
+    </div>;
+   })}
+  </nav>
+  <div className="sidebar-footer">{!compact&&<span>Nexo · Administración</span>}
+   <button type="button" className="sidebar-collapse-button" onClick={()=>setCollapsed(!collapsed)} aria-label={collapsed?'Expandir menú':'Contraer menú'}>
+    <FontAwesomeIcon icon={collapsed?faChevronRight:faChevronLeft}/>
+   </button>
+  </div>
+ </aside>;
 }

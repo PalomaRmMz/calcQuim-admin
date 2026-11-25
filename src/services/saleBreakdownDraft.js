@@ -1,11 +1,26 @@
 import {inventoryConvert,inventoryDecimal} from './inventoryUnits.js';
 import {saleInventoryBaseline} from './saleInventoryBaseline.js';
+import {getProductChoiceLabels,normalizeText} from '../utils/catalogUtils.js';
 
 export function compatibleSaleProducts(pending,item,products){
-    return products.filter(p=>item.eligibleProductIds?item.eligibleProductIds.some(id=>String(id)===String(p.id)):
+    return [...new Map(products.filter(p=>item.eligibleProductIds?item.eligibleProductIds.some(id=>String(id)===String(p.id)):
         pending.scope==='product'?String(p.id)===String(pending.scope_id):
         pending.scope==='line'?String(p.lineId)===String(pending.scope_id):
-        pending.scope==='category'?String(p.categoryId)===String(pending.scope_id):false);
+        pending.scope==='category'?String(p.categoryId)===String(pending.scope_id):false).map(p=>[String(p.id),p])).values()];
+}
+export function breakdownProductLabels(products,categories,lines,presentations=[]){
+    const names=getProductChoiceLabels(products,categories,lines);
+    const counts=new Map();
+    const options=products.map(product=>{
+        const detail=[product.brand,product.variant,product.characteristics,
+            ...presentations.filter(p=>p.active&&String(p.productId)===String(product.id)).map(p=>p.name)].filter(Boolean);
+        const name=names.get(product.id);
+        const label=[name,...new Set(detail.filter(value=>!normalizeText(name).includes(normalizeText(value))))].join(' · ');
+        const normalized=normalizeText(label);
+        counts.set(normalized,(counts.get(normalized)??0)+1);
+        return [String(product.id),label];
+    });
+    return new Map(options.map(([id,label])=>[id,counts.get(normalizeText(label))>1?`${label} · SKU ${id}`:label]));
 }
 export function initialBreakdownDraft(pending,item,products){
     const compatible=compatibleSaleProducts(pending,item,products);

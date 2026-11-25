@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {captureChoices,capturePreview,suggestedPhysical,withWebPhysical,physicalQuantity,captureUnit} from '../src/domain/webSaleCapture.mjs';
+import {captureChoices,capturePreview,suggestedPhysical,withWebPhysical,physicalQuantity,captureUnit,hardwareAmountQuantity} from '../src/domain/webSaleCapture.mjs';
 import {makeLine,repriceLines,requestBody} from '../server/src/mobile/sale.mjs';
 import {WHOLESALE_VERSION} from '../src/domain/wholesalePricing.mjs';
 const tariff={key:'10:litro',price:10,unit:'litro',productIds:[1],wholesalePrice:7,pricingVersion:WHOLESALE_VERSION,amountPolicy:'wholesale-threshold',priceSource:'individual',priceSourceId:1};
 const choice={key:'product:1',kind:'product',refId:1,name:'Limpieza QA',tariffs:[tariff]};
+test('jarcería por monto exige una equivalencia exacta en la presentación seleccionada',()=>{
+ const integer={price:12.5,presentation:{integerOnly:true}};
+ assert.equal(hardwareAmountQuantity(integer,'25.00'),'2');
+ assert.throws(()=>hardwareAmountQuantity(integer,'18.75'),/unidades enteras/);
+ const fractional={price:16,presentation:{integerOnly:false}};
+ assert.equal(hardwareAmountQuantity(fractional,'2.00'),'0.125');
+ assert.throws(()=>hardwareAmountQuantity({...fractional,price:3},'2'),/cantidad exacta/);
+});
 test('display roll label preserves stored base unit and presentation factor',()=>{const t={unit:'pieza',presentation:{key:'rollo',factor:1}};assert.equal(captureUnit(t),'rollo');assert.equal(t.unit,'pieza');assert.equal(captureUnit({unit:'paquete',presentation:{key:'paquete-4',factor:4}}),'paquete');assert.equal(captureUnit({unit:'pieza'}),'pieza');});
 test('single-price product is unchanged and multi-price group retains every reference and exact source',()=>{
  assert.equal(captureChoices([choice])[0],choice);const group={...choice,key:'category:3',kind:'category',refId:3,tariffs:[tariff,{...tariff,key:'20:litro',price:20}]};const entries=captureChoices([group]);assert.equal(entries.length,2);assert.equal(new Set(entries.map(c=>c.key)).size,2);

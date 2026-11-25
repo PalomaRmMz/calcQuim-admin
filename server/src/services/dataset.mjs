@@ -1,6 +1,7 @@
 import {readSalesHistory,readOfficialSale} from '../repositories/salesHistory.mjs';
 import {webPaymentSnapshot,configureWebPayment} from './webPayment.mjs';
-import {purchaseInventoryView} from './purchaseInventory.mjs';
+import {purchaseInventoryView,receiveHardwarePurchase,syncHardwarePurchaseEdit} from './purchaseInventory.mjs';
+import {packEnabled} from '../repositories/packInventory.mjs';
 import {syncProductInitialInventory} from './productInitialInventory.mjs';
 import { createHash } from 'node:crypto';
 import { schemaName } from '../db/migrate.mjs';
@@ -86,6 +87,19 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
         if(name==='configureWebPaymentPolicy'){await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true');}
         else if(inventoryCommands.includes(name)) { if(JSON.stringify(before)!==JSON.stringify(current.data))await writeDataset(c,current.data,current.counters); else await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true'); }
         else {await writeDataset(c,current.data,current.counters);await syncProductInitialInventory(c,before,current.data,name,args,{channel});await syncInventory(c,before,current.data,name,args);
+          if(name==='saveHardwarePurchase'||name==='editHardwarePurchase'){
+            for(const {id,minimum} of result.createdProducts){
+              const product=current.data.products.find(p=>p.id===id);
+              const presentations=current.data.procurement.presentations.filter(p=>p.productId===id);
+              const packIndex=presentations.findIndex(p=>p.unit==='paquete'&&Number(p.factor)>1);
+              // Establish a zero opening balance. Only the purchase receipts add stock.
+              const initialInventory={quantity:'0',unit:product.unit,observations:'Saldo de apertura antes de la primera compra'};
+              if(packIndex>=0&&await packEnabled(c))initialInventory.physicalComposition={presentationIndex:packIndex,closedPackages:'0',looseUnits:'0'};
+              await syncProductInitialInventory(c,{products:current.data.products.filter(p=>p.id!==id)},current.data,'saveHardwareProductBundle',[{minimum,initialInventory}],{channel});
+            }
+            if(name==='editHardwarePurchase')await syncHardwarePurchaseEdit(c,before,current.data,result.purchaseId,args[0].inventoryCorrection,result.createdProducts);
+            else await receiveHardwarePurchase(c,current.data,result);
+          }
           if(name==='voidSale') {
             const sale=current.data.sales.find(s=>s.id===args[0]);
             sale.history=[...(sale.history||[]),{action:'voided',channel,at:new Date().toISOString()}];

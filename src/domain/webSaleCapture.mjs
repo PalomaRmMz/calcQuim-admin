@@ -1,6 +1,32 @@
 import {makeLine,repriceLines} from '../../server/src/mobile/sale.mjs';
+import {normalizeText} from '../utils/catalogUtils.js';
+import {decimal} from './commerce.mjs';
 export const WEB_PHYSICAL_VERSION='web-confirmed-quantity-v1';
 export const captureUnit=tariff=>tariff?.presentation?.key==='rollo'&&tariff.unit==='pieza'&&Number(tariff.presentation.factor)===1?'rollo':tariff?.unit;
+export function hardwareAmountQuantity(tariff,value){
+ const amount=decimal(value,2),price=decimal(tariff.price,2);
+ const scaled=amount*1000000n;
+ if(scaled%price!==0n||tariff.presentation.integerOnly&&amount%price!==0n){
+  throw Error(tariff.presentation.integerOnly?
+   'El importe debe ser un múltiplo exacto del precio para vender unidades enteras.':
+   'El importe no equivale a una cantidad exacta de esta presentación. Usa Por cantidad.');
+ }
+ const quantity=scaled/price;
+ const fraction=String(quantity%1000000n).padStart(6,'0').replace(/0+$/,'');
+ return String(quantity/1000000n)+(fraction?'.'+fraction:'');
+}
+export function webCaptureChoices(choices,products){
+ const names=new Map(products.map(product=>[String(product.id),product.name]));
+ return choices.map(choice=>{
+  const tariff=choice.tariffs[0];
+  if(!tariff.presentation)return {...choice,displayName:choice.name};
+  const name=names.get(String(tariff.presentation.productId))||choice.name;
+  const presentation=normalizeText(choice.name).includes(normalizeText(name))?choice.name:
+   `${name} · ${choice.name}`;
+  const fractionAlias=presentation.replace(/½|1\s*[⁄/]\s*2/g,'1/2');
+  return {...choice,name:presentation,displayName:presentation,aliases:[...(choice.aliases??[]),fractionAlias,fractionAlias.replaceAll('1/2','½')]};
+ });
+}
 export function physicalQuantity(value){
  const text=String(value??'').trim().replace(',','.');
  if(!/^\d+(?:\.\d{1,6})?$/.test(text))throw Error('La cantidad física debe ser positiva y admitir hasta seis decimales.');

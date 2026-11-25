@@ -71,9 +71,9 @@ export function deleteEntity(data, collection, entityId) {
     if (isReferenced(data, collection, entityId)) fail("Tiene compras, costos informados o relaciones. Puedes inactivarlo; su historial debe conservarse.");
     return { ...data, [collection]: data[collection].filter((entry) => entry.id !== entityId) };
 }
-export function savePurchase(data, input, products, purchaseId) {
+export function savePurchase(data, input, products, purchaseId, {commercialRevision=false}={}) {
     const old = data.purchases.find((p) => p.id === purchaseId);
-    if(old?.items.some(i=>i.commercialPurchase))fail('Esta compra conserva contenido por presentación. Anúlala y registra la corrección desde Compras; revisa antes su recepción física.');
+    if(!commercialRevision&&old?.items.some(i=>i.commercialPurchase))fail('Esta compra conserva contenido por presentación. Anúlala y registra la corrección desde Compras; revisa antes su recepción física.');
     const receipt = Object.hasOwn(input, 'receipt') ? input.receipt : old?.receipt;
     if (!receiptValid(receipt)) fail('La foto del ticket no es válida o supera el tamaño permitido.');
     if (purchaseId && (!old || old.voidedAt)) fail("La compra no existe o está anulada.");
@@ -91,7 +91,7 @@ export function savePurchase(data, input, products, purchaseId) {
         let cost = entry.cost;
         const previous = old?.items.find((i) => i.id === entry.id);
         let snapshot;
-        if (previous) {
+        if (previous && (!commercialRevision || supplier.id === old.supplierId)) {
             snapshot = previous;
             if (supplier.id !== old.supplierId) fail("Para cambiar el proveedor retira sus insumos y selecciona las alternativas del nuevo proveedor.");
         } else {

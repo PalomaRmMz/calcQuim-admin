@@ -2,13 +2,15 @@ import HardwareCategoriesPage from './pages/HardwareCategoriesPage.jsx';
 import HardwareProductsPage from './pages/HardwareProductsPage.jsx';
 import HardwareComparatorPage from './pages/HardwareComparatorPage.jsx';
 import LaundryPage from './pages/LaundryPage.jsx';
+import PurchasePlanningPage from './pages/PurchasePlanningPage.jsx';
 import SuppliersPanel from './pages/SuppliersPanel.jsx';
 import ProcurementComparator from './pages/ProcurementComparator.jsx';
 import CleaningScope from './components/CleaningScope.jsx';
 import CommercePage from './pages/CommercePage.jsx';
 import { useState } from "react";
-import { Link, Navigate, Route, Routes, useLocation } from "react-router";
-import Sidebar from "./layout/Sidebar";
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router";
+import Sidebar,{MenuToggle} from "./layout/Sidebar";
+import HomePage from './pages/HomePage';
 import Header from "./layout/Header";
 import ProductsModule from "./pages/ProductsModule";
 import SalesPage from "./pages/SalesPage";
@@ -23,7 +25,7 @@ import Feedback from "./components/Feedback";
 import ReportsPage from './pages/ReportsPage';
 import InventoryPage from './pages/InventoryPage';
 
-function App() {
+function App({connection}) {
   const { pathname } = useLocation();
   const sectionTitles = { '/compras/abastecimiento': 'Abastecimiento', '/compras/comparador': 'Comparador', '/compras/proveedores': 'Proveedores', '/productos/categorias': 'Categorías', '/productos/lineas': 'Líneas', '/productos/grupos': 'Grupos de precio' };
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -50,12 +52,13 @@ function App() {
       />
 
       <main className={`main-content ${sidebarCollapsed ? "main-content-expanded" : ""}`}>
+        <div className="nexo-utility"><MenuToggle onClick={()=>setMobileMenuOpen(true)} expanded={mobileMenuOpen}/>{connection}</div>
         <Routes>
           {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/comercial" element={<Navigate to="/reportes/comerciales" replace/>}/>}
           {!import.meta.env.CALCQUIM_OPERATIONAL&&<Route path="/reportes/comerciales" element={<CommercePage reportOnly/>}/>}
           <Route path="/proveedores" element={<SuppliersPanel/>}/>
-          <Route path="/productos-jarceria" element={<><Header title="Productos de jarcería" subtitle="Administra tu catálogo de Nexo" onOpenMenu={() => setMobileMenuOpen(true)} /><HardwareProductsPage/></>}/>
-          <Route path="/productos-jarceria/categorias" element={<><Header title="Categorías de jarcería" subtitle="Organiza el catálogo de jarcería" onOpenMenu={() => setMobileMenuOpen(true)} /><HardwareCategoriesPage/></>}/>
+          <Route path="/productos-jarceria" element={<><Header title="Productos de jarcería" subtitle="Administra tu catálogo de Nexo" /><HardwareProductsPage/></>}/>
+          <Route path="/productos-jarceria/categorias" element={<><Header title="Categorías de jarcería" subtitle="Organiza el catálogo de jarcería" /><HardwareCategoriesPage/></>}/>
           <Route path="/lavanderia" element={<LaundryPage/>}/>
           <Route path="/comparadores/limpieza" element={<CleaningScope><ProcurementComparator/></CleaningScope>}/>
           <Route path="/comparadores/jarceria" element={<HardwareComparatorPage/>}/>
@@ -63,14 +66,17 @@ function App() {
           <Route path="/inventarios/jarceria" element={<InventoryPage key="hardware" activity="JARCERIA"/>}/>
           <Route path="/compras/proveedores" element={<Navigate to="/proveedores" replace/>}/>
           <Route path="/compras/comparador" element={<Navigate to="/comparadores/limpieza" replace/>}/>
-          <Route path="/inventario" element={<><Header title="Inventario aproximado" subtitle="Existencias, movimientos y reposición" onOpenMenu={() => setMobileMenuOpen(true)} /><InventoryPage key="legacy-cleaning" activity="LIMPIEZA"/></>} />
-          <Route path="/" element={<Navigate to="/productos" replace />} />
-          <Route path="/compras/:section?" element={<><Header title={sectionTitles[pathname] || 'Compras'} subtitle="Compras · Historial, abastecimiento y proveedores" onOpenMenu={() => setMobileMenuOpen(true)} /><PurchasesModule /></>} />
+          <Route path="/compras/planificacion" element={<PurchasePlanningPage/>}/>
+          <Route path="/inventario" element={<><Header title="Inventario aproximado" subtitle="Existencias, movimientos y reposición" /><InventoryPage key="legacy-cleaning" activity="LIMPIEZA"/></>} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/administracion/datos" element={<Navigate to="/" replace/>}/>
+          <Route path="/datos" element={<Navigate to="/" replace/>}/>
+          <Route path="/compras/:section?" element={<><Header title={sectionTitles[pathname] || 'Compras'} subtitle="Compras · Historial, abastecimiento y proveedores" /><PurchasesModule /></>} />
           <Route path="/compras/historial" element={<Navigate to="/compras" replace />} />
           <Route path="/administracion/proveedores" element={<Navigate to="/compras/proveedores" replace />} />
-          <Route path="/reportes" element={<><Header title="Reportes" subtitle="Abastecimiento, rendimientos, compras y catálogo" onOpenMenu={() => setMobileMenuOpen(true)} /><ReportsPage /></>} />
-          <Route path="*" element={<Navigate to="/productos" replace />} />
-          <Route path="/ventas" element={<><Header title="Ventas" subtitle="Registra y consulta las ventas de Nexo" onOpenMenu={() => setMobileMenuOpen(true)} /><SalesPage /></>} />
+          <Route path="/reportes" element={<><Header title="Reportes" subtitle="Abastecimiento, rendimientos, compras y catálogo" /><ReportsPage /></>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/ventas" element={<><Header title="Ventas" subtitle="Registra y consulta las ventas de Nexo" /><SalesPage /></>} />
 
           <Route
             path="/productos/:section?"
@@ -79,8 +85,11 @@ function App() {
                 <Header
                   title={sectionTitles[pathname] || 'Productos de limpieza'}
                   subtitle="Administra tu catálogo de Nexo"
-                  onOpenMenu={() => setMobileMenuOpen(true)}
                 />
+                <nav className="page-tabs mb-3" aria-label="Catálogo de limpieza">
+                  {[['Productos','/productos'],['Categorías','/productos/categorias'],['Líneas','/productos/lineas'],['Grupos de precio','/productos/grupos']].map(([label,path])=>
+                    <NavLink key={path} end to={path} className={({isActive})=>isActive?'active':''}>{label}</NavLink>)}
+                </nav>
                 <CleaningScope><ProductsModule /></CleaningScope>
               </>
             }

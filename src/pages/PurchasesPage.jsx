@@ -1,6 +1,6 @@
 import PurchaseInventoryPanel from '../components/PurchaseInventoryPanel';
-import PurchaseCostCorrection from '../components/PurchaseCostCorrection';
-import {Link} from 'react-router';
+import {Link,useSearchParams} from 'react-router';
+import AppModal from '../components/AppModal';
 import {purchaseInventoryStates} from '../domain/purchaseInventory.mjs';
 import {useContext} from 'react';
 import {PersistenceContext} from '../context/PersistenceContext.js';
@@ -42,14 +42,21 @@ export default function PurchasesPage() {
     useEffect(()=>{let active=true;fetch('/api/v1/inventory').then(r=>{if(!r.ok)throw Error('No se pudo consultar la recepción.');return r.json();}).then(v=>{if(active){setInventory({view:v,revision});setReceiptError('');}}).catch(e=>{if(active)setReceiptError(e.message);});return()=>{active=false;};},[revision]);
     useEffect(()=>{if(!persistence)return;const controller=new AbortController();fetch('/api/v1/inventory/purchases',{signal:controller.signal,cache:'no-store'}).then(r=>r.ok?r.json():null).then(v=>{if(!controller.signal.aborted)setTracking(v);}).catch(()=>{});return()=>controller.abort();},[revision,persistence]);
     const managed=(p,ordinal)=>tracking?.rows.find(r=>r.purchase_id===String(p.id)&&r.item_id===String(p.items[ordinal]?.id));
-    const received=(p,ordinal)=>(inventory?.movements||[]).some(m=>String(m.purchase_id)===String(p.id)&&String(m.reference?.purchaseOrdinal)===String(ordinal)&&m.kind==='receipt');
+    const received=(p,ordinal)=>{
+        const tracked=managed(p,ordinal);
+        return tracked?['applied','included'].includes(tracked.state):(inventory?.movements||[]).some(m=>String(m.purchase_id)===String(p.id)&&m.kind==='receipt'&&(
+            m.reference?.itemId!=null?String(m.reference.itemId)===String(p.items[ordinal]?.id):String(m.reference?.purchaseOrdinal)===String(ordinal)
+        ));
+    };
     const receivedAll=p=>p.items.every((item,ordinal)=>!item.commercialPurchase||received(p,ordinal));
     async function receive(p,ordinal){if(receiptBusy)return;setReceiptBusy(true);setReceiptError('');try{const result=await persistence.command('receivePresentationPurchase',[{purchaseId:p.id,ordinal,activity:'JARCERIA'}]);if(!result.ok)throw Error(result.message);setNotice('Recepción confirmada. Existencias actualizadas.');}catch(e){setReceiptError(e.message);}finally{setReceiptBusy(false);}}
  
     const [status, setStatus] = useState("valid");
     const { products, categories, productLines } = useCatalog();
-    const [editing, setEditing] = useState(null);const [costEditing,setCostEditing]=useState(null);
-    const [creating, setCreating] = useState(false);
+    const [editing, setEditing] = useState(null);
+    const editingHardware=editing&&purchaseActivity(editing)==='JARCERIA';
+    const [searchParams]=useSearchParams();
+    const [creating, setCreating] = useState(() => searchParams.get('nueva')==='1');
     const [purchaseType,setPurchaseType]=useState('');
     const [selectedId, selectPurchase] = useState(null);
     const selected = purchases.find(p => p.id === selectedId);
@@ -78,7 +85,7 @@ export default function PurchasesPage() {
         { id: "products", header: "Artículos", accessorFn: (p) => p.items.length },
         { accessorKey: "total", header: "Total", Cell: ({ cell }) => <strong>{money(cell.getValue())}</strong> },
         { id: "status", header: "Estado", accessorFn: (p) => p.voidedAt ? "Anulada" : purchaseActivity(p)==='JARCERIA' ? !inventory ? "Consultando recepción" : receivedAll(p) ? "Recibida" : "Pendiente de recepción" : "Registrada" },
-        { id: "actions", header: "Acciones", enableSorting: false, Cell: ({ row }) => <TableActions label="compra" onView={() => setSelected(row.original)} onEdit={!row.original.voidedAt ? () => purchaseActivity(row.original)==='JARCERIA'?setCostEditing(row.original):setEditing(row.original) : undefined} onDelete={!row.original.voidedAt ? () => {setVoidInventory({confirmed:false,disposition:'',reason:''});setDeleting(row.original);} : undefined} deleteLabel="Anular" /> },
+        { id: "actions", header: "Acciones", enableSorting: false, Cell: ({ row }) => <TableActions label="compra" onView={() => setSelected(row.original)} onEdit={!row.original.voidedAt ? () => setEditing(row.original) : undefined} onDelete={!row.original.voidedAt ? () => {setVoidInventory({confirmed:false,disposition:'',reason:''});setDeleting(row.original);} : undefined} deleteLabel="Anular" /> },
     ];
     return <>
         <div className="d-flex justify-content-end mb-3"><ExportExcelButton scope="procurement" /></div>
@@ -104,10 +111,10 @@ export default function PurchasesPage() {
             <DataTable columns={columns} data={filtered} searchPlaceholder="Buscar proveedor o referencia..." initialSorting={[{ id: "date", desc: true }]} />
         </ContentPanel>{persistence&&<section id="seguimiento-inventario" className="mt-3"><PurchaseInventoryPanel inventory={inventory} onChanged={persistence.refresh}/></section>}</>
 
-        {creating&&!purchaseType&&<Dialog className="app-dialog" open onClose={()=>setCreating(false)}><ModalHeader title="Nueva compra" subtitle="Selecciona la actividad" onClose={()=>setCreating(false)}/><DialogContent><Button onClick={()=>setPurchaseType('LIMPIEZA')}>Productos de limpieza</Button><Button onClick={()=>setPurchaseType('JARCERIA')}>Jarcería</Button></DialogContent></Dialog>}
-        {costEditing&&<PurchaseCostCorrection purchase={costEditing} persistence={persistence} onClose={()=>setCostEditing(null)}/>}
+        {creating&&!purchaseType&&<AppModal title="Nueva compra" subtitle="Selecciona la actividad" onClose={()=>setCreating(false)} actions={<Button color="inherit" onClick={()=>setCreating(false)}>Cancelar</Button>}><div className="d-grid gap-2"><Button variant="outlined" onClick={()=>setPurchaseType('LIMPIEZA')}>Productos de limpieza</Button><Button variant="outlined" onClick={()=>setPurchaseType('JARCERIA')}>Jarcería</Button></div></AppModal>}
+        {editingHardware&&<HardwarePurchases key={editing.id} original={editing} onClose={()=>setEditing(null)} onCreated={()=>{setEditing(null);setNotice('Compra actualizada; la versión anterior se conservó.');}}/>}
         {creating&&purchaseType==='JARCERIA'&&<HardwarePurchases onClose={()=>{setCreating(false);setPurchaseType('');}} onCreated={()=>{setCreating(false);setPurchaseType('');}}/>}
-        {(editing||creating&&purchaseType==='LIMPIEZA')&&<CleaningScope includeSupplierId={editing?.supplierId}><PurchaseFormModal activity={editing?null:'LIMPIEZA'} purchase={editing} onClose={()=>{setCreating(false);setEditing(null);setPurchaseType('');}} onSave={save}/></CleaningScope>}
+        {(!editingHardware&&(editing||creating&&purchaseType==='LIMPIEZA'))&&<CleaningScope includeSupplierId={editing?.supplierId}><PurchaseFormModal activity={editing?null:'LIMPIEZA'} purchase={editing} onClose={()=>{setCreating(false);setEditing(null);setPurchaseType('');}} onSave={save}/></CleaningScope>}
         <Dialog className="app-dialog" open={Boolean(selected)} onClose={() => setSelected(null)} fullWidth maxWidth="lg" PaperProps={{ className: "sale-detail" }} aria-labelledby="purchase-detail-title">
             <ModalHeader titleId="purchase-detail-title" title="Detalle de compra" onClose={() => setSelected(null)} />
             <DialogContent className="sale-detail-body">{selected && <>
@@ -121,12 +128,12 @@ export default function PurchasesPage() {
                         </tbody>)}
                     </table></div>
                 </section>
-                {receiptError&&<Feedback message={receiptError}/>}{purchaseActivity(selected)==='JARCERIA'&&<p className="form-text">Para corregir cantidades o costos, anula y registra la compra correcta. Una recepción previa requiere revisar la mercancía en Inventario; la anulación exige confirmar si se retira o conserva el producto físico.</p>}<ReceiptViewer receipt={selected.receipt} />
+                {receiptError&&<Feedback message={receiptError}/>}{purchaseActivity(selected)==='JARCERIA'&&<p className="form-text">Al corregir una compra recibida, confirma el tratamiento físico de los renglones modificados.</p>}<ReceiptViewer receipt={selected.receipt} />
                 {selected.voidedAt && <Feedback variant="warning" message="Compra anulada: se conserva para consulta y no participa en métricas." />}
                 {selected.revisions?.length > 0 && <details className="sale-notes"><summary>Versiones anteriores ({selected.revisions.length})</summary>{selected.revisions.map((revision, index) => <details key={index} className="sale-notes"><summary>Versión {index + 1} · {revision.supplierNameSnapshot} · {revision.date} · {money(revision.total)}</summary><ReceiptViewer receipt={revision.receipt} /><p>Referencia: {revision.reference || "Sin referencia"}</p><p className="preserve-text">{revision.notes}</p><div className="table-responsive sale-items"><table className="table"><thead><tr><th>Insumo</th><th>Cantidad</th><th>Costo unitario</th><th>Costo total</th><th>Rendimiento</th></tr></thead><tbody>{revision.items.map((item) => <tr key={item.id}><td>{item.name}<small className="d-block text-muted">{item.commercialPurchase ? item.productNameSnapshot : <>{item.legacy ? "Modalidad anterior no registrada" : SOURCING_TYPES[item.sourcingType]} · {item.productNameSnapshot || "Sin producto final registrado"} · {supplyPresentation(item)}</>}</small></td><td>{item.quantity} {item.unit}</td><td>{unitCostText(item.unitCost ?? item.total / item.quantity)}</td><td>{money(item.total)}</td><td><PurchaseItemOutcome item={item} /></td></tr>)}</tbody></table></div></details>)}</details>}
                 {selected.notes && <div className="sale-detail-notes"><h3>Notas</h3><p>{selected.notes}</p></div>}
             </>}</DialogContent>
-            <DialogActions className="sale-detail-footer"><div><span>Total de compra · MXN</span><strong>{money(selected?.total || 0)}</strong></div>{!selected?.voidedAt&&purchaseActivity(selected)!=='JARCERIA' && <Button variant="outlined" onClick={() => { setEditing(selected); setSelected(null); }}>Editar compra</Button>}<Button color="inherit" onClick={() => setSelected(null)}>Cerrar detalle</Button></DialogActions>
+            <DialogActions className="sale-detail-footer"><div><span>Total de compra · MXN</span><strong>{money(selected?.total || 0)}</strong></div>{selected&&!selected.voidedAt&&<Button variant="outlined" onClick={() => { setEditing(selected); setSelected(null); }}>Editar compra</Button>}<Button color="inherit" onClick={() => setSelected(null)}>Cerrar detalle</Button></DialogActions>
         </Dialog>
         {deleting && <ConfirmDialog title="Anular compra" confirmText="Anular compra" onClose={() => setDeleting(null)} onConfirm={async () => { const result = await voidPurchase(deleting.id,voidInventory); if (result.ok) setNotice("Compra anulada. Su historial se conserva."); return result; }}>¿Anular la compra a {deleting.supplierNameSnapshot} por {money(deleting.total)}? Dejará de participar en los totales y el comparador.<label className="d-block mt-3"><input type="checkbox" checked={voidInventory.confirmed} onChange={e=>setVoidInventory({...voidInventory,confirmed:e.target.checked})}/> Confirmo el destino físico de los productos recibidos</label><label className="d-block">Destino<select className="form-select" value={voidInventory.disposition} onChange={e=>setVoidInventory({...voidInventory,disposition:e.target.value})}><option value="">Selecciona cuando haya entradas de inventario</option><option value="returned">Mercancía devuelta o retirada físicamente</option><option value="retained">Se conserva el producto físico; solo se anula el registro comercial</option></select></label><label className="d-block">Motivo<input className="form-control" maxLength={1000} value={voidInventory.reason} onChange={e=>setVoidInventory({...voidInventory,reason:e.target.value})}/></label></ConfirmDialog>}
     </>;

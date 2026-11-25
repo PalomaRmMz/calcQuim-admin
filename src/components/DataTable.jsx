@@ -1,6 +1,7 @@
 import { MaterialReactTable, useMaterialReactTable } from "material-react-table";
 import { MRT_Localization_ES } from "material-react-table/locales/es";
 import { useMediaQuery } from '@mui/material';
+import { useImperativeHandle } from 'react';
 import MobileDataTable from './MobileDataTable';
 import "../styles/components/DataTable.css";
 
@@ -13,8 +14,10 @@ function DataTable({
     columnOrder,
     mobileCards = false,
     enableGlobalFilter = true,
+    enableColumnFilters = false,
+    getRowClassName,
     renderDetailPanel,
-    renderTopToolbarCustomActions,
+    tableRef,
     getRowId,
     mobilePrimaryColumns,
     mobileSecondaryColumns,
@@ -32,9 +35,8 @@ function DataTable({
         enableExpanding: Boolean(renderDetailPanel),
         enableExpandAll: false,
         renderDetailPanel,
-        renderTopToolbarCustomActions,
         enableGlobalFilter,
-        enableColumnFilters: false,
+        enableColumnFilters,
         enableDensityToggle: false,
         enableFullScreenToggle: false,
         enableColumnActions: false,
@@ -53,6 +55,7 @@ function DataTable({
                 pageSize: 10,
             },
             showGlobalFilter: enableGlobalFilter,
+            showColumnFilters: enableColumnFilters,
             columnVisibility,
             sorting: initialSorting,
             ...(columnOrder ? { columnOrder } : {}),
@@ -78,10 +81,11 @@ function DataTable({
             className: "data-table-body-cell",
         },
 
-        muiTableBodyRowProps: {
-            className: "data-table-row",
-        },
+        muiTableBodyRowProps: ({row}) => ({
+            className: ['data-table-row', getRowClassName?.(row.original)].filter(Boolean).join(' '),
+        }),
     });
+    useImperativeHandle(tableRef,()=>table,[table]);
 
     if (mobileCards && smallScreen) return <MobileDataTable table={table} searchPlaceholder={searchPlaceholder} emptyMessage={emptyMessage} primaryColumns={mobilePrimaryColumns} secondaryColumns={mobileSecondaryColumns} detailsLabel={mobileDetailsLabel} />;
 

@@ -40,10 +40,11 @@ export function ensureFinishedSource(data, product, supplierId, products, config
     return { data: next, source };
 }
 
-export function prepareFinishedPurchase(data, input, catalog, purchaseId) {
+export function prepareFinishedPurchase(data, input, catalog, purchaseId, options) {
     let products = [...catalog.products], next = data;
     const items = input.items.map(entry => {
-        if (purchaseId && data.purchases.find(p => p.id === purchaseId)?.items.some(i => i.id === entry.id)) return entry;
+        const old = purchaseId && data.purchases.find(p => p.id === purchaseId);
+        if (old?.items.some(i => i.id === entry.id) && (!options?.commercialRevision || old.supplierId === input.supplierId)) return entry;
         if (entry.directProductId == null && !entry.newProduct) return entry;
         if (!calculatePurchaseItem(entry)) throw new Error('Revisa las cantidades y costos.');
         let product;
@@ -59,7 +60,7 @@ export function prepareFinishedPurchase(data, input, catalog, purchaseId) {
         return { ...entry, directProductId: undefined, newProduct: undefined, supplyItemId: resolved.source.id, quantity, cost };
     });
     const named = products.map(p => ({ ...p, displayName: getProductDisplayName(p, catalog.categories, catalog.productLines) }));
-    return { products, data: savePurchase(next, { ...input, items }, named, purchaseId) };
+    return { products, data: savePurchase(next, { ...input, items }, named, purchaseId, options) };
 }
 
 export function configureFinishedProducts(data, request, products) {

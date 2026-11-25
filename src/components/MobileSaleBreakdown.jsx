@@ -1,10 +1,18 @@
 import {useEffect,useState} from 'react';
 import {money} from '../utils/salesUtils.js';
 import {saleInventoryBaseline} from '../services/saleInventoryBaseline.js';
-import {buildSaleBreakdownRows,compatibleSaleProducts,initialBreakdownDraft} from '../services/saleBreakdownDraft.js';
+import {breakdownProductLabels,buildSaleBreakdownRows,compatibleSaleProducts,initialBreakdownDraft} from '../services/saleBreakdownDraft.js';
 import '../styles/components/SaleBreakdownEditor.css';
 const moment=value=>new Date(value).toLocaleString('es-MX',{timeZone:'America/Mexico_City'});
-export default function SaleBreakdownEditor({sale,persistence,products}){
+export function ConfirmedBreakdowns({sale,products,categories,productLines,presentations}){
+    const entries=Object.entries(sale.breakdowns??{});
+    if(!entries.length)return null;
+    const labels=breakdownProductLabels(products,categories,productLines,presentations);
+    return <details className="my-2"><summary>Productos ya confirmados</summary>{entries.map(([ordinal,rows])=>
+        <p key={ordinal} className="mt-2 mb-0"><strong>{sale.items[ordinal]?.name}: </strong>
+            {rows.map(row=>`${labels.get(String(row.productId))??row.name}: ${row.quantity} ${row.unit}`).join(' · ')}</p>)}</details>;
+}
+export default function SaleBreakdownEditor({sale,persistence,products,categories,productLines}){
     const [view,setView]=useState(null),[drafts,setDrafts]=useState({}),[observations,setObservations]=useState('');
     const [error,setError]=useState(''),[errorId,setErrorId]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
     useEffect(()=>{
@@ -35,7 +43,7 @@ export default function SaleBreakdownEditor({sale,persistence,products}){
         {error&&<p role="alert" className="alert alert-danger">{error}</p>}{notice&&<p role="status" className="alert alert-success">{notice}</p>}
         {!view?<p>Cargando desglose…</p>:!pending.length?<p className="text-success">Desglose completo.</p>:<form onSubmit={save} noValidate><fieldset disabled={busy} className="sale-breakdown-fields">
             {pending.map(row=>{
-                const item=sale.items[row.ordinal],draft=draftFor(row),allowed=compatibleSaleProducts(row,item,products);
+                const item=sale.items[row.ordinal],draft=draftFor(row),allowed=compatibleSaleProducts(row,item,products),labels=breakdownProductLabels(allowed,categories,productLines,persistence.snapshot.data.procurement.presentations);
                 return <article key={row.id} className={`sale-breakdown-card${errorId===row.id?' sale-breakdown-error':''}`}>
                     <header><label><input type="checkbox" checked={draft.enabled} onChange={e=>update(row,{enabled:e.target.checked})}/><strong>{item.name}</strong></label><span>{row.quantity!=null?`${row.quantity} ${row.unit}`:'Cantidad por confirmar'} · {money(item.amount)}</span></header>
                     {!draft.enabled?<p className="text-muted mb-0">Se deja pendiente para después.</p>:<>
@@ -45,8 +53,8 @@ export default function SaleBreakdownEditor({sale,persistence,products}){
                             const review=product?saleInventoryBaseline(sale,row,product.id,view):null;
                             const change=patch=>update(row,{allocations:draft.allocations.map((a,n)=>n===index?{...a,...patch}:a)});
                             return <div key={index} className="sale-breakdown-allocation"><div className="sale-breakdown-inputs">
-                                <label>Producto entregado<select aria-label={`Producto entregado de ${item.name}, parte ${index+1}`} className="form-select" value={allocation.productId} onChange={e=>change({productId:e.target.value,baselineTreatment:''})}><option value="">Selecciona el producto</option>{allowed.map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}</select></label>
-                                <label>Cantidad ({product?.unit||row.unit})<input aria-label={`Cantidad de ${item.name}, parte ${index+1}`} className="form-control" type="number" min="0.000001" step="0.000001" value={allocation.quantity} onChange={e=>change({quantity:e.target.value})}/></label>
+                                <label>Producto entregado<select aria-label={`Producto entregado de ${item.name}, parte ${index+1}`} className="form-select" value={allocation.productId} onChange={e=>change({productId:e.target.value,baselineTreatment:''})}><option value="">Selecciona el producto</option>{allowed.map(p=><option key={p.id} value={String(p.id)}>{labels.get(String(p.id))}</option>)}</select></label>
+                                <label>Cantidad de esta parte ({product?.unit||row.unit})<input aria-label={`Cantidad de ${item.name}, parte ${index+1}`} className="form-control" type="number" min="0.000001" step="0.000001" value={allocation.quantity} onChange={e=>change({quantity:e.target.value})}/></label>
                                 {draft.allocations.length>1&&<button type="button" className="btn btn-outline-secondary" aria-label={`Quitar parte ${index+1} de ${item.name}`} onClick={()=>update(row,{allocations:draft.allocations.filter((_,n)=>n!==index)})}>Quitar</button>}
                             </div>{review?.required&&Number(allocation.quantity)>0&&<div className="sale-breakdown-baseline"><p>Venta: {sale.date}. Conteo de {product.name}: {moment(review.anchorAt)}.</p><label>¿El conteo ya contemplaba esta salida?<select className="form-select" value={allocation.baselineTreatment} onChange={e=>change({baselineTreatment:e.target.value})}><option value="">Selecciona</option><option value="already_included">Sí, no descontar otra vez</option><option value="apply_now">No, descontar ahora</option></select></label></div>}</div>;
                         })}
@@ -58,6 +66,5 @@ export default function SaleBreakdownEditor({sale,persistence,products}){
             <details className="sale-breakdown-notes"><summary>Agregar una observación (opcional)</summary><textarea aria-label="Observación del desglose" className="form-control mt-2" maxLength={2000} value={observations} onChange={e=>setObservations(e.target.value)}/></details>
             <footer><small>El cobro se conserva. El inventario se actualiza al guardar.</small><button className="btn btn-primary" disabled={!count} type="submit">{busy?'Guardando…':`Guardar ${count===1?'1 renglón':`${count} renglones`}`}</button></footer>
         </fieldset></form>}
-        {sale.breakdowns&&Object.keys(sale.breakdowns).length>0&&<details className="mt-3"><summary>Productos ya confirmados</summary>{Object.entries(sale.breakdowns).map(([ordinal,rows])=><p key={ordinal} className="mt-2 mb-0"><strong>{sale.items[ordinal]?.name}: </strong>{rows.map(r=>`${r.name}: ${r.quantity} ${r.unit}`).join(' · ')}</p>)}</details>}
     </section>;
 }

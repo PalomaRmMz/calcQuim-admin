@@ -15,6 +15,7 @@ import { inventoryKinds,inventoryStatus } from '../services/inventoryPresentatio
 import { inventoryDecimal,inventoryText } from '../services/inventoryUnits.js';
 import {initialCaptureAllowed} from '../domain/webBusinessDecisions.mjs';
 import {replenishmentSuggestion} from '../domain/replenishmentSuggestion.mjs';
+import {cleaningInventoryLabels,inventoryAttention} from '../domain/inventoryAttention.mjs';
 import PhysicalCompositionFields,{emptyPhysicalComposition} from './PhysicalCompositionFields';
 import {packOptions,composition} from '../domain/packInventory.mjs';
 
@@ -86,7 +87,7 @@ export default function InventoryProductModal({activity='LIMPIEZA',product,view,
     return <><AppModal title={`Inventario · ${name}`} subtitle="Existencia aproximada y movimientos del producto" icon={faBox} maxWidth="md" onClose={requestClose} onSubmit={canSubmit?submit:undefined} actions={<><Button color="inherit" disabled={busy} onClick={requestClose}>Cerrar</Button>{canSubmit&&<Button type="submit" variant="contained" disableElevation disabled={busy}>{busy?'Guardando…':submitLabel}</Button>}</>}>
         <fieldset disabled={busy} style={{border:0,padding:0,margin:0,minWidth:0}}>
         <ClassificationBadge product={product} categories={categories} productLines={productLines}/>
-        <div className="inventory-stock-summary mt-3" role="status"><span>Saldo aproximado actual</span><strong>{product.quantity===null?'Sin determinar':`${product.quantity} ${unitLabel(product.unit)}`}</strong><small>{inventoryStatus[product.status]}</small>{product.negative&&<p className="text-danger mb-0">Saldo negativo: revisa la estimación.</p>}{product.low&&<p className="text-warning mb-0">En punto de reposición.</p>}</div>
+        <div className="inventory-stock-summary mt-3" role="status"><span>Saldo aproximado actual</span><strong>{product.quantity===null?'Sin determinar':`${product.quantity} ${unitLabel(product.unit)}`}</strong><small>{activity==='LIMPIEZA'?(cleaningInventoryLabels[inventoryAttention(product).key]??inventoryStatus[product.status]):inventoryStatus[product.status]}</small>{product.negative&&<p className="text-danger mb-0">Saldo negativo: revisa la estimación.</p>}{activity!=='LIMPIEZA'&&product.low&&<p className="text-warning mb-0">En punto de reposición.</p>}</div>
         <p className="mt-2">Inventario inicial: <strong>{product.initialQuantity==null?'Sin determinar':`${product.initialQuantity} ${unitLabel(product.unit)}`}</strong>{product.initialMovementId&&<small className="d-block">Inicial registrado · Original: {product.initialOriginalQuantity} {unitLabel(product.unit)}</small>}</p>
         {packView&&<p role="status">{packView.known?`Composición física: ${packView.closedPackages} paquetes cerrados y ${packView.looseUnits} unidades sueltas · Total equivalente: ${packView.total}`:'Composición física desconocida. El total equivalente no acredita paquetes cerrados.'}</p>}
         {view.initialCaptureMode!=='automatic'&&<p className="alert alert-warning">La separación del inventario inicial está pendiente de recargar Express. No captures correcciones hasta su activación.</p>}

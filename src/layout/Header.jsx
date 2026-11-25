@@ -5,14 +5,14 @@ import "../styles/layout/Header.css";
 function Header({ title, subtitle, onOpenMenu }) {
     return (
         <header className="top-header">
-            <button
+            {onOpenMenu&&<button
                 type="button"
                 className="mobile-menu-button"
                 onClick={onOpenMenu}
                 aria-label="Abrir menú"
             >
                 <FontAwesomeIcon icon={faBars} />
-            </button>
+            </button>}
 
             <div>
                 <h2>{title}</h2>

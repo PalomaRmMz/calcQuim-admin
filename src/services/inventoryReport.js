@@ -1,16 +1,21 @@
-import {inventoryDecimal} from './inventoryUnits.js';
+import {cleaningInventoryLabels,inventoryAttention,requiresInventoryPurchase} from '../domain/inventoryAttention.mjs';
 import {getProductDisplayName} from '../utils/catalogUtils.js';
 export const stockStates={out:'AGOTADO',low:'POR REPONER',sufficient:'SUFICIENTE',unknown:'SIN EXISTENCIA DETERMINADA',unconfigured:'SIN PUNTO DE REPOSICIÓN',negative:'SALDO NEGATIVO: CONCILIAR'};
-export function inventoryReportRows(products,categories=[],lines=[]){
+export const inventoryReportLabels=activity=>activity==='LIMPIEZA'?{
+    ...stockStates,out:cleaningInventoryLabels.empty,low:cleaningInventoryLabels.low,
+    sufficient:cleaningInventoryLabels.sufficient,unknown:cleaningInventoryLabels.unknown,
+}:stockStates;
+export function inventoryReportRows(products,categories=[],lines=[],activity){
+    const labels=inventoryReportLabels(activity);
     return products.map(p=>{
-        const known=p.quantity!=null,negative=known&&inventoryDecimal(p.quantity)<0n,missingThreshold=p.minimum==null;
-        const status=!known?'unknown':negative?'negative':inventoryDecimal(p.quantity)===0n?'out':missingThreshold?'unconfigured':inventoryDecimal(p.quantity)<=inventoryDecimal(p.minimum)?'low':'sufficient';
-        return {...p,id:p.productId,name:getProductDisplayName(p,categories,lines),category:categories.find(c=>String(c.id)===String(p.categoryId))?.name||'Sin categoría',status,negative,missingThreshold,stateLabel:stockStates[status],suggestedQuantity:p.usualBatch,suggestionType:p.usualBatch===null?'Sin lote configurado':'Lote habitual orientativo; no es una necesidad exacta',action:negative?'Conciliar saldo':!known?'Determinar existencia':status==='out'?'Reponer':missingThreshold?'Configurar punto de reposición':status==='low'?'Reponer':'Sin reposición inmediata'};
+        const {key}=inventoryAttention(p),negative=key==='negative',missingThreshold=p.minimum==null;
+        const status=key==='empty'?'out':key;
+        return {...p,id:p.productId,name:getProductDisplayName(p,categories,lines),category:categories.find(c=>String(c.id)===String(p.categoryId))?.name||'Sin categoría',status,negative,missingThreshold,stateLabel:labels[status],suggestedQuantity:p.usualBatch,suggestionType:p.usualBatch===null?'Sin lote configurado':'Lote habitual orientativo; no es una necesidad exacta',action:requiresInventoryPurchase(key)?'Reponer':negative?'Conciliar saldo':key==='unknown'?'Determinar existencia':missingThreshold?'Configurar punto de reposición':'Sin reposición inmediata'};
     }).sort((a,b)=>a.category.localeCompare(b.category,'es')||a.name.localeCompare(b.name,'es'));
 }
 export function filterInventoryReport(rows,{category='',line='',search='',state=''}={}){
     const text=search.trim().toLocaleLowerCase('es');
-    return rows.filter(r=>(!category||String(r.categoryId)===String(category))&&(!line||String(r.lineId)===String(line))&&(!text||r.name.toLocaleLowerCase('es').includes(text))&&(!state||(state==='need'?['out','low'].includes(r.status):state==='negative'?r.negative:state==='unconfigured'?r.missingThreshold:r.status===state)));
+    return rows.filter(r=>(!category||String(r.categoryId)===String(category))&&(!line||String(r.lineId)===String(line))&&(!text||r.name.toLocaleLowerCase('es').includes(text))&&(!state||(state==='need'?requiresInventoryPurchase(r.status==='out'?'empty':r.status):state==='negative'?r.negative:state==='unconfigured'?r.missingThreshold:r.status===state)));
 }
 export function inventoryReportSummary(rows){return Object.fromEntries(Object.keys(stockStates).map(key=>[key,filterInventoryReport(rows,{state:key}).length]));}
 export const inventoryExportColumns=[['name','Producto'],['category','Categoría'],['quantity','Existencia aproximada'],['unit','Unidad'],['minimum','Punto de reposición'],['usualBatch','Lote habitual'],['stateLabel','Estado de abastecimiento'],['suggestedQuantity','Cantidad sugerida'],['suggestionType','Tipo de sugerencia'],['action','Acción']].map(([key,label])=>({key,label,width:key==='suggestionType'?50:28,type:'text'}));

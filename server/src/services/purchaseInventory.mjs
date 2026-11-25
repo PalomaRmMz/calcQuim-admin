@@ -43,17 +43,82 @@ async function apply(c,data,row,quantity,kind,reason,baseline={}){
  const id=await appendInventoryMovement(c,p,{kind,quantity:q,purchaseId:row.purchase_id,reason,originKey:`purchase:${lotKey(row)}:${row.version}:${kind}`,reference:{purchaseLotKey:lotKey(row),purchaseOrdinal:row.ordinal,itemId:row.item_id,itemFingerprint:row.fingerprint,sourceSnapshot:row.source,reasonSource:'system',...baseline}});
  await update(c,row,{state:'applied',actual_quantity:q});await audit(c,row,kind,reason,{movementId:id,quantity:q,unit:p.unit,...baseline});return id;
 }
-async function register(c,data,purchase,item,ordinal,historical){
+async function register(c,data,purchase,item,ordinal,historical,{requireReceipt=false,newProduct=false,addedByEdit=false,baselineTreatment}={}){
  const intent=purchaseInventoryIntent(item,data.products),row={purchase_id:String(purchase.id),item_id:String(item.id),ordinal,product_id:intent.productId==null?null:String(intent.productId),activity:purchase.activity??intent.activity,nature:intent.nature,state:historical?'reconcile':intent.nature==='input'&&intent.productId?'prepare':'reconcile',source:item,fingerprint:fingerprint(item),quantity:intent.quantity,unit:intent.unit,actual_quantity:null,version:1,historical};
  await c.query('INSERT INTO purchase_inventory(purchase_id,item_id,ordinal,product_id,activity,nature,state,source,fingerprint,quantity,unit,historical) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[row.purchase_id,row.item_id,ordinal,row.product_id,row.activity,row.nature,row.state,JSON.stringify(item),row.fingerprint,row.quantity,row.unit,historical]);
  // Recepciones previas inequívocas se reconocen; los ajustes sin referencia no se adivinan.
- const previous=(await c.query("SELECT m.* FROM inventory_movements m WHERE purchase_id=$1 AND reference->>'purchaseOrdinal'=$2 AND kind IN ('receipt','prepared') AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[row.purchase_id,String(ordinal)])).rows;
+ const previous=addedByEdit?[]:(await c.query("SELECT m.* FROM inventory_movements m WHERE purchase_id=$1 AND reference->>'purchaseOrdinal'=$2 AND kind IN ('receipt','prepared') AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[row.purchase_id,String(ordinal)])).rows;
  if(previous.length){await update(c,row,{state:'included',actual_quantity:null});await audit(c,row,'recognized','Movimiento histórico ya registrado',{evidenceMovementIds:previous.map(m=>m.id)});return row;}
  if(!historical&&intent.activity===row.activity&&intent.nature==='finished'&&intent.productId&&intent.quantity){
-  try{const baseline=await checkBaseline(c,product(data,row.product_id),{date:purchase.date});await apply(c,data,row,intent.quantity,'receipt','Entrada automática de compra',baseline);}
-  catch(error){if(error.code!=='INVENTORY_BASELINE_REVIEW_REQUIRED')throw error;}
+  try{const baseline=newProduct?{}:await checkBaseline(c,product(data,row.product_id),{date:purchase.date},baselineTreatment);await apply(c,data,row,intent.quantity,'receipt','Entrada automática de compra',baseline);}
+  catch(error){if(requireReceipt||error.code!=='INVENTORY_BASELINE_REVIEW_REQUIRED')throw error;}
  }
+ if(requireReceipt&&row.state!=='applied')fail('No se pudo aplicar la entrada física del renglón.');
  await audit(c,row,'registered',historical?'Compra histórica pendiente de conciliación':'Compra registrada según su naturaleza');return row;
+}
+
+export async function syncHardwarePurchaseEdit(c,before,data,purchaseId,options,createdProducts=[]){
+ if(!await purchaseInventoryAvailable(c)||!(await purchaseAutomationPolicy(c)).enabled)fail('La integración de inventario de compras debe estar habilitada.');
+ const old=before.procurement.purchases.find(p=>p.id===purchaseId);
+ const purchase=data.procurement.purchases.find(p=>p.id===purchaseId);
+ const tracked=new Map((await c.query('SELECT *,quantity::text,actual_quantity::text FROM purchase_inventory WHERE purchase_id=$1 FOR UPDATE',[String(purchaseId)])).rows.map(row=>[row.item_id,row]));
+ const current=new Map(purchase.items.map((item,ordinal)=>[String(item.id),{item,ordinal}]));
+ const previousIds=new Set(old.items.map(item=>String(item.id)));
+ const newProducts=new Set(createdProducts.map(({id})=>String(id)));
+ const reason=why(options);
+ function confirmPhysical(){
+  if(options.confirmed!==true||!['adjust','retained'].includes(options.disposition))fail('Confirma el tratamiento físico de los renglones modificados.');
+ }
+ for(const [originalOrdinal,original] of old.items.entries()){
+  const row=tracked.get(String(original.id)),next=current.get(String(original.id));
+  const oldQuantity=inventoryDecimal(original.commercialPurchase.baseQuantity);
+  const quantity=next?inventoryDecimal(next.item.commercialPurchase.baseQuantity):0n;
+  const physicalChanged=!next||quantity!==oldQuantity;
+  if(!row){
+   if((physicalChanged||next?.ordinal!==originalOrdinal)&&(await c.query("SELECT 1 FROM inventory_movements WHERE purchase_id=$1 AND kind='receipt' AND reference->>'purchaseOrdinal'=$2 AND NOT (reference ? 'purchaseLotKey') LIMIT 1",[String(purchaseId),String(originalOrdinal)])).rowCount)
+    fail('Concilia primero la recepción histórica sin seguimiento de este renglón.');
+   continue;
+  }
+  if(!physicalChanged&&next.ordinal===row.ordinal&&fingerprint(next.item)===row.fingerprint)continue;
+  if(physicalChanged){
+   confirmPhysical();
+   if(row.state==='included'&&options.disposition==='adjust')fail('Concilia primero el renglón histórico incluido en inventario.');
+   if(['cancelled','returned'].includes(row.state)&&next)fail('El renglón ya se retiró de inventario.');
+   if(row.state==='applied'&&options.disposition==='adjust'){
+    const net=inventoryDecimal(await entered(c,row));
+    if(net!==inventoryDecimal(row.actual_quantity))fail('Concilia los retiros parciales antes de cambiar la cantidad recibida.');
+    const entries=await activeEntries(c,row),destination=product(data,row.product_id);
+    const baseline=await checkBaseline(c,destination,{seq:entries[0]?.seq,date:old.date},options.baselineTreatment);
+    const delta=quantity-net;
+    if(delta!==0n)await appendInventoryMovement(c,destination,{kind:'adjustment',quantity:inventoryText(delta),purchaseId:row.purchase_id,reason,
+     originKey:`purchase-edit:${lotKey(row)}:${row.version}`,reference:{purchaseLotKey:lotKey(row),purchaseOrdinal:next?.ordinal??row.ordinal,itemId:row.item_id,
+      physicalPresentation:original.commercialPurchase,...baseline}});
+    await update(c,row,{state:next?'applied':'returned',actual_quantity:next?inventoryText(quantity):null});
+   }else if(row.state==='applied'){
+    await update(c,row,{state:'included'});
+   }else if(!next&&row.state==='reconcile'){
+    await update(c,row,{state:'cancelled'});
+   }
+  }
+  if(next)await update(c,row,{ordinal:next.ordinal,source:next.item,fingerprint:fingerprint(next.item),quantity:inventoryText(quantity)});
+  await audit(c,row,'revised',reason,{previous:original,next:next?.item??null,physicalDisposition:physicalChanged?options.disposition:null});
+ }
+ for(const {item,ordinal} of current.values()){
+  if(previousIds.has(String(item.id)))continue;
+  confirmPhysical();
+  if(options.disposition!=='adjust')fail('Selecciona aplicar la diferencia física para agregar renglones.');
+  await register(c,data,purchase,item,ordinal,false,{requireReceipt:true,addedByEdit:true,
+   newProduct:newProducts.has(String(item.productId)),baselineTreatment:options.baselineTreatment});
+ }
+}
+
+export async function receiveHardwarePurchase(c,data,result){
+ if(!await purchaseInventoryAvailable(c)||!(await purchaseAutomationPolicy(c)).enabled)fail('Activa la integración de inventario de compras antes de registrar la compra.');
+ const purchase=data.procurement.purchases.find(p=>p.id===result.purchaseId);
+ const newIds=new Set(result.createdProducts.map(p=>p.id));
+ for(const [ordinal,item] of purchase.items.entries()){
+  await register(c,data,purchase,item,ordinal,false,{requireReceipt:true,newProduct:newIds.has(item.productId)});
+ }
 }
 async function businessDecisions(c,input){
  await c.query("UPDATE inventory_settings SET policy=jsonb_set(policy,'{jarceriaInitialCapture}',$1::jsonb) WHERE singleton=true",[JSON.stringify(jarceriaInitialPolicy)]);

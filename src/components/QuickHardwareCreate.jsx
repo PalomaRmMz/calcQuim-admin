@@ -10,9 +10,9 @@ import {productInitialInventory} from '../domain/productInitialInventory.mjs';
 const newPresentation=()=>({id:crypto.randomUUID(),name:'',unit:'pieza',factor:'1',price:''});
 const modes=[['piece','Solo por pieza'],['pack','Solo por paquete'],['both','Por paquete y pieza'],['advanced','Más opciones']];
 
-export default function QuickHardwareCreate({categories,onClose,onSave}){
+export default function QuickHardwareCreate({categories,onClose,onSave,purchaseDraft=false,initialName=''}){
  const [form,setForm]=useState(()=>({
-  name:'',unit:'pieza',saleMode:'piece',piecePrice:'',packPrice:'',packSize:'',minimum:'',
+  name:initialName,unit:'pieza',saleMode:'piece',piecePrice:'',packPrice:'',packSize:'',minimum:'',
   initialEnabled:false,closedPackages:'',looseUnits:'0',openPackages:'0',openPackagePieces:'',
   quantity:'',pricePending:false,presentations:[newPresentation()]
  }));
@@ -60,21 +60,21 @@ export default function QuickHardwareCreate({categories,onClose,onSave}){
  const close=()=>{if(!busy)onClose();};
 
  return <AppModal title="Agregar producto" onClose={close} onSubmit={submit}
-  actions={<><Button color="inherit" disabled={busy} onClick={close}>Cancelar</Button><Button type="submit" variant="contained" disableElevation disabled={busy}>{busy?'Guardando…':'Guardar producto'}</Button></>}>
+  actions={<><Button color="inherit" disabled={busy} onClick={close}>Cancelar</Button><Button type="submit" variant="contained" disableElevation disabled={busy}>{purchaseDraft?'Agregar a la compra':busy?'Guardando…':'Guardar producto'}</Button></>}>
   <fieldset disabled={busy}>
    <Field label="Nombre comercial" required maxLength={200} value={form.name} onChange={e=>set('name',e.target.value)}/>
    <div className="row gx-2">
-    <div className="col-sm-6"><Field label="Categoría" value={form.hardwareCategoryId??''} onChange={e=>set('hardwareCategoryId',e.target.value||null)}>
-     <option value="">Sin categoría</option>{categories.filter(c=>c.active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+    <div className="col-sm-6"><Field label="Categoría" required={purchaseDraft} value={form.hardwareCategoryId??''} onChange={e=>set('hardwareCategoryId',e.target.value||null)}>
+     <option value="">{purchaseDraft?'Selecciona categoría':'Sin categoría'}</option>{categories.filter(c=>c.active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
     </Field></div>
     <div className="col-sm-6"><Field label="Forma de venta" value={form.saleMode} onChange={e=>{
      setForm(current=>({...current,saleMode:e.target.value,...(current.unit!=='pieza'?{minimum:''}:{})}));
     }}>
-     {modes.map(([value,label])=><option key={value} value={value}>{label}</option>)}
+     {modes.filter(([value])=>!purchaseDraft||value!=='advanced').map(([value,label])=><option key={value} value={value}>{label}</option>)}
     </Field></div>
    </div>
    {packaged&&number('packSize','Piezas por paquete',{min:'2',required:true})}
-   <label className="form-check mb-2"><input className="form-check-input" type="checkbox" checked={form.pricePending} onChange={e=>set('pricePending',e.target.checked)}/>Precio pendiente</label>
+   {!purchaseDraft&&<label className="form-check mb-2"><input className="form-check-input" type="checkbox" checked={form.pricePending} onChange={e=>set('pricePending',e.target.checked)}/>Precio pendiente</label>}
    {!advanced&&!form.pricePending&&<div className="row gx-2">
     {packaged&&<div className="col-sm">{price('packPrice','Precio por paquete (MXN)')}</div>}
     {form.saleMode!=='pack'&&<div className="col-sm">{price('piecePrice','Precio por pieza (MXN)')}</div>}
@@ -102,7 +102,7 @@ export default function QuickHardwareCreate({categories,onClose,onSave}){
     {canOpen&&<label className="form-check mb-2"><input className="form-check-input" type="checkbox" checked={form.autoOpenPackages===true} onChange={e=>set('autoOpenPackages',e.target.checked)}/>Abrir paquetes para atender piezas</label>}
    </>}
    {number('minimum',`Inventario mínimo (${packaged?'piezas equivalentes':baseUnit}, opcional)`,{step:whole?'1':'0.000001',placeholder:'Sin configurar'})}
-   {advanced?<InitialInventoryFields value={specialInitial} onChange={setSpecialInitial} unit={baseUnit}
+   {!purchaseDraft&&(advanced?<InitialInventoryFields value={specialInitial} onChange={setSpecialInitial} unit={baseUnit}
     presentations={form.presentations.map(row=>({...row,baseUnit,integerOnly:whole||wholeSaleUnit(row.unit)}))}/>:<>
    <label className="form-check mb-2"><input className="form-check-input" type="checkbox" checked={form.initialEnabled} onChange={e=>set('initialEnabled',e.target.checked)}/>Registrar inventario inicial</label>
    {form.initialEnabled&&(packaged?<>
@@ -114,7 +114,7 @@ export default function QuickHardwareCreate({categories,onClose,onSave}){
     {open&&number('openPackagePieces','Piezas restantes en los paquetes abiertos',{min:'1',required:true})}
     <p className="form-text">Total equivalente: {Number(form.closedPackages||0)*Number(form.packSize||0)+Number(form.looseUnits||0)+(open?Number(form.openPackagePieces||0):0)} piezas</p>
    </>:number('quantity',`Cantidad inicial (${baseUnit})`,{step:whole?'1':'0.000001',required:true}))}
-   </>}
+   </>)}
    <Feedback message={error}/>
   </fieldset>
  </AppModal>;

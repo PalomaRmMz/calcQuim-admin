@@ -4,7 +4,7 @@ import {Button} from '@mui/material';
 import {PersistenceContext} from '../context/PersistenceContext.js';
 import {useCatalog} from '../context/CatalogHooks.js';
 import useInventoryReport from '../hooks/useInventoryReport.js';
-import {inventoryReportRows,filterInventoryReport,inventoryReportSummary,stockStates,inventoryReportCsv,inventoryReportWorkbook,inventoryExportColumns} from '../services/inventoryReport.js';
+import {inventoryReportRows,filterInventoryReport,inventoryReportSummary,inventoryReportLabels,inventoryReportCsv,inventoryReportWorkbook,inventoryExportColumns} from '../services/inventoryReport.js';
 import {saveInventory} from '../services/inventoryClient.js';
 import {categoryStyle} from '../utils/categoryColors.js';
 import {unitLabel} from '../utils/units.js';
@@ -18,10 +18,11 @@ import '../styles/components/InventoryReport.css';
 
 const dateText=date=>new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',dateStyle:'short',timeStyle:'medium'}).format(date);
 export default function InventoryReport({activity='LIMPIEZA'}){
+    const stockStates=inventoryReportLabels(activity);
     const persistence=useContext(PersistenceContext),catalog=useCatalog();
     const {view,updatedAt,error,refresh}=useInventoryReport(persistence?.snapshot.revision,Boolean(persistence));
     const [category,setCategory]=useState(''),[line,setLine]=useState(''),[search,setSearch]=useState(''),[state,setState]=useState(''),[selected,setSelected]=useState(null),[print,setPrint]=useState(null),[exporting,setExporting]=useState(false),[message,setMessage]=useState('');
-    const rows=useMemo(()=>{const data=persistence?.snapshot.data,ids=new Set((data?.products||[]).filter(p=>productActivity(p)===activity).map(p=>String(p.id))),hardwareCategories=data?.procurement.hardwareCategories||[];return inventoryReportRows((view?.products??[]).filter(p=>ids.has(String(p.productId))).map(p=>activity==='JARCERIA'?{...p,categoryId:data.products.find(r=>String(r.id)===String(p.productId))?.hardwareCategoryId??null}:p),activity==='JARCERIA'?hardwareCategories:catalog.categories,activity==='JARCERIA'?[]:catalog.productLines);},[view,catalog.categories,catalog.productLines,persistence?.snapshot.data,activity]);
+    const rows=useMemo(()=>{const data=persistence?.snapshot.data,ids=new Set((data?.products||[]).filter(p=>productActivity(p)===activity).map(p=>String(p.id))),hardwareCategories=data?.procurement.hardwareCategories||[];return inventoryReportRows((view?.products??[]).filter(p=>ids.has(String(p.productId))).map(p=>activity==='JARCERIA'?{...p,categoryId:data.products.find(r=>String(r.id)===String(p.productId))?.hardwareCategoryId??null}:p),activity==='JARCERIA'?hardwareCategories:catalog.categories,activity==='JARCERIA'?[]:catalog.productLines,activity);},[view,catalog.categories,catalog.productLines,persistence?.snapshot.data,activity]);
     const base=useMemo(()=>filterInventoryReport(rows,{category,line,search}),[rows,category,line,search]);
     const summary=useMemo(()=>inventoryReportSummary(base),[base]);
     const filtered=useMemo(()=>filterInventoryReport(base,{state}),[base,state]);

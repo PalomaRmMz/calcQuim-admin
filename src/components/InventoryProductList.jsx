@@ -4,18 +4,20 @@ import { getProductDisplayName } from '../utils/catalogUtils.js';
 import { unitLabel } from '../utils/units.js';
 import { inventoryStatus } from '../services/inventoryPresentation.js';
 import DataTable from './DataTable';
-import InventoryShoppingList from './InventoryShoppingList';
 import '../styles/components/Inventory.css';
-import {inventoryAttention,packDescription} from '../domain/inventoryAttention.mjs';
+import {cleaningInventoryLabels,inventoryAttention,packDescription} from '../domain/inventoryAttention.mjs';
 
-export default function InventoryProductList({rows,catalogRows,categories,productLines,onSelect,activity='LIMPIEZA',presentations=[],packs=[]}){
+export default function InventoryProductList({rows,tableRef,categories,productLines,onSelect,activity='LIMPIEZA',presentations=[],packs=[]}){
     // Mismo orden y configuración inicial que ProductsPage, sin agrupación visual.
     const products=rows.map(p=>({...p,id:p.productId})).sort((a,b)=>getProductDisplayName(a,categories,productLines).localeCompare(getProductDisplayName(b,categories,productLines),'es'));
     const displayUnit=p=>presentations.some(r=>String(r.productId)===String(p.productId)&&r.active&&r.key==='rollo'&&Number(r.factor)===1)?'rollo':p.unit;
     const category=p=>categories.find(c=>String(c.id)===String(activity==='JARCERIA'?p.hardwareCategoryId:p.categoryId));
     const packById=new Map(packs.map(pack=>[String(pack.productId),pack]));
     const packFor=p=>packById.get(String(p.productId));
-    const stateFor=p=>inventoryAttention(p,packFor(p));
+    const stateFor=p=>{
+        const state=inventoryAttention(p,packFor(p));
+        return activity==='LIMPIEZA'?{...state,label:cleaningInventoryLabels[state.key]??state.label}:state;
+    };
     const columns=[
         {id:'name',header:'Producto',size:200,accessorFn:p=>getProductDisplayName(p,categories,productLines),Cell:({cell,row})=><button type="button" className="inventory-product-button" onClick={()=>onSelect(row.original.productId)}><span className="table-text-primary category-accent" style={categoryStyle(category(row.original))}>{cell.getValue()}</span></button>},
         {id:'quantity',header:'Disponible',size:230,accessorFn:p=>stateFor(p).quantity,sortUndefined:'last',Cell:({row})=>{const p=row.original,pack=packFor(p),state=stateFor(p);return <div className="inventory-availability"><strong>{state.quantity===null?'Desconocido':quantityLabel(state.quantity,displayUnit(p))}</strong><small className="d-block text-muted">{inventoryStatus[p.status]}</small>{pack&&<small className="d-block">{packDescription(pack,displayUnit(p))}</small>}</div>;}},
@@ -32,5 +34,5 @@ export default function InventoryProductList({rows,catalogRows,categories,produc
     return <DataTable columns={columns} data={products} getRowId={p=>String(p.productId)}
         columnOrder={['name','quantity','status','minimum','actions','category',activity==='JARCERIA'?'presentations':'line']}
         columnVisibility={{line:false,category:false,presentations:false}} searchPlaceholder="Buscar producto..." initialSorting={[{id:'name',desc:false}]}
-        renderTopToolbarCustomActions={({table})=><InventoryShoppingList table={table} options={{activity,catalogRows,categories,productLines,presentations,packs}}/>}/>;
+        tableRef={tableRef}/>;
 }

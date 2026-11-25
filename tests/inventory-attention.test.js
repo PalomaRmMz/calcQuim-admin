@@ -38,10 +38,11 @@ test('lista de limpieza incluye toda la búsqueda filtrada, conserva litros y no
  assert.equal(table.getRowModel().rows.length,10);
  const filtered=table.getFilteredRowModel().rows.map(row=>row.original);
  const message=inventoryShoppingList(filtered,{activity:'LIMPIEZA',catalogRows:products,productLines:[{id:2,categoryId:1,name:'Concentrados'}]});
- assert.equal(message.split('\n').filter(line=>line.startsWith('•')).length,13);
+ assert.equal(message.split('\n').filter(line=>line.startsWith('•')).length,14);
  assert.match(message,/Agotados[\s\S]*Concentrados Jabón 1 · 0 L\n/);
- assert.match(message,/Por debajo del mínimo[\s\S]*Concentrados Jabón surtido · 1.25 L · mín. 3 L/);
- assert.doesNotMatch(message,/al mínimo|sin mínimo|sin conteo|negativo|otra línea|otra categoría|Cloro|Jarcería/);
+ assert.match(message,/En el mínimo o por debajo[\s\S]*Concentrados Jabón surtido · 1.25 L · mín. 3 L/);
+ assert.match(message,/Jabón al mínimo · 3 L · mín. 3 L/);
+ assert.doesNotMatch(message,/sin mínimo|sin conteo|negativo|otra línea|otra categoría|Cloro|Jarcería/);
  const chosen=filterInventoryProducts(products,{...filters,only:'empty',productId:'12'},inventoryAttention);
  assert.deepEqual(chosen.map(row=>row.productId),[12]);
  assert.equal(JSON.stringify(products),before);

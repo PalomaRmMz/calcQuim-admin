@@ -1,12 +1,12 @@
-import {Link} from 'react-router';
-import {filterInventoryProducts,inventoryAttention} from '../domain/inventoryAttention.mjs';
+import {cleaningInventoryLabels,filterInventoryProducts,inventoryAttention} from '../domain/inventoryAttention.mjs';
 import {getProductDisplayName} from '../utils/catalogUtils.js';
 import {scopeInventoryData,scopeInventory} from '../domain/activityScope.mjs';
-import { useContext,useEffect,useState } from 'react';
+import { useContext,useEffect,useRef,useState } from 'react';
 import { PersistenceContext } from '../context/PersistenceContext.js';
 import { useCatalog } from '../context/CatalogHooks.js';
 import ContentPanel from '../components/ContentPanel';
 import InventoryProductList from '../components/InventoryProductList';
+import InventoryShoppingList from '../components/InventoryShoppingList';
 import InventoryProductModal from '../components/InventoryProductModal';
 import { inventoryKinds as kinds } from '../services/inventoryPresentation.js';
 import InventoryReasonFields from '../components/InventoryReasonFields';
@@ -16,7 +16,7 @@ import { saveInventory } from '../services/inventoryClient.js';
 
 export default function InventoryPage({activity='LIMPIEZA'}){
     const persistence=useContext(PersistenceContext),catalog=useCatalog();
-    const [purchaseTracking,setPurchaseTracking]=useState(null);
+    const inventoryTable=useRef(null);
     const [view,setView]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
     const [category,setCategory]=useState(''),[line,setLine]=useState(''),[filterProduct,setFilterProduct]=useState(''),[only,setOnly]=useState('');
     const [selectedId,setSelectedId]=useState(null),[selectedTab,setSelectedTab]=useState(undefined),[reviewReason,setReviewReason]=useState(emptyInventoryReason);
@@ -24,21 +24,23 @@ export default function InventoryPage({activity='LIMPIEZA'}){
     useEffect(()=>{if(!notice||notice.includes('No repitas'))return;const timer=setTimeout(()=>setNotice(''),5000);return()=>clearTimeout(timer);},[notice]);
     const revision=persistence?.snapshot.revision,hasPersistence=Boolean(persistence);
     useEffect(()=>{let active=true;if(hasPersistence)fetch('/api/v1/inventory').then(async response=>{if(!response.ok)throw new Error('Inventario no disponible. La migración operativa requiere autorización.');return response.json();}).then(value=>{if(active)setView(value);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[revision,hasPersistence]);
-    useEffect(()=>{let active=true;if(hasPersistence)fetch('/api/v1/inventory/purchases').then(r=>r.ok?r.json():null).then(v=>{if(active)setPurchaseTracking(v);}).catch(()=>{});return()=>{active=false;};},[revision,hasPersistence]);
     if(!persistence)return <p>Inventario requiere el modo PostgreSQL; no guarda en el navegador.</p>;
     if(!view?.enabled)return <section className="container py-4"><h2>Inventario pendiente de activación</h2><p role="status">{error||'Consultando disponibilidad del módulo…'}</p><p>No se asignaron existencias iniciales ni se modificaron productos o compras.</p></section>;
     const scoped=scopeInventory(view,persistence.snapshot.data,activity),scopedData=scopeInventoryData(persistence.snapshot.data,activity);
     const hardware=activity==='JARCERIA',data=persistence.snapshot.data;
     const packs=view.packInventory?.products||[];
+    const presentations=data.procurement.presentations||[];
     const packById=new Map(packs.map(pack=>[String(pack.productId),pack]));
-    const attention=p=>inventoryAttention(p,packById.get(String(p.productId)));
+    const attention=p=>{
+        const state=inventoryAttention(p,packById.get(String(p.productId)));
+        return hardware?state:{...state,label:cleaningInventoryLabels[state.key]??state.label};
+    };
     const hardwareCategories=new Map(hardware?data.products.map(p=>[String(p.id),p.hardwareCategoryId]):[]);
     const products=hardware?scoped.products.map(p=>({...p,hardwareCategoryId:hardwareCategories.get(String(p.productId))})):scoped.products;
     const categories=hardware?(data.procurement.hardwareCategories??[]):catalog.categories;
     const productLines=hardware?[]:catalog.productLines;
     const productName=p=>getProductDisplayName(p,categories,productLines);
     const needing=products.filter(p=>attention(p).key!=='sufficient');
-    const pendingPurchases=(purchaseTracking?.rows||[]).filter(r=>r.activity===activity&&['reconcile','prepare'].includes(r.state)&&!r.voided&&!r.removed).length;
     const rows=filterInventoryProducts(products,{activity,category,line,productId:filterProduct,only},attention);
 
     function reasonData(value,context){try{return inventoryReasonPayload(value,context);}catch(error){setError(error.message);return null;}}
@@ -56,7 +58,7 @@ export default function InventoryPage({activity='LIMPIEZA'}){
           {[["empty","Agotados"],["low","Inventario bajo"],["sufficient","Suficientes"],["unknown","Desconocidos"],["unconfigured","Sin mínimo configurado"],["negative","Por revisar"]].map(([key,label])=><button key={key} type="button" className={`inventory-summary-card inventory-summary-${key} ${only===key?'active':''}`} aria-pressed={only===key} onClick={()=>setOnly(only===key?'':key)}><strong>{products.filter(p=>attention(p).key===key).length}</strong><span>{label}</span></button>)}
         </section>
         <details className="inventory-attention card p-3 mb-3"><summary>{needing.length} productos requieren atención</summary><p className="form-text">Reponer: agotados o bajos. Revisar: saldos negativos, desconocidos o mínimos pendientes.</p><ul>{needing.map(p=><li key={p.productId}><button className="btn btn-link text-start" onClick={()=>{setSelectedTab(attention(p).key==='unconfigured'?'replenishment':undefined);setSelectedId(p.productId);}}>{productName(p)} | {attention(p).quantity===null?'Existencia desconocida':`${attention(p).quantity} ${p.unit}`} | {attention(p).label}</button></li>)}</ul></details>
-        <p className="d-flex flex-wrap align-items-center gap-2"><Link className="btn btn-outline-primary btn-sm" to="/compras#seguimiento-inventario">{pendingPurchases?`${pendingPurchases} compras requieren acción`:'Consultar compras y elaboraciones'}</Link><span className="form-text m-0">Las compras y su recepción se gestionan en Compras.</span></p>
+        <div className="mb-3"><InventoryShoppingList tableRef={inventoryTable} options={{activity,catalogRows:products,categories,productLines,presentations,packs}}/></div>
         <div className="inventory-filters" role="group" aria-label="Filtros de existencias">
             <label>Categoría<select className="form-select" value={category} onChange={e=>{setCategory(e.target.value);setLine('');}}>
                 <option value="">Todas</option>{[...categories].sort((a,b)=>a.name.localeCompare(b.name,'es')).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
@@ -66,15 +68,15 @@ export default function InventoryPage({activity='LIMPIEZA'}){
             </select></label>}
             <label>Producto<select className="form-select" value={filterProduct} onChange={e=>setFilterProduct(e.target.value)}><option value="">Todos</option>{productOptions}</select></label>
             <label>Estado<select className="form-select" value={only} onChange={e=>setOnly(e.target.value)}>
-                <option value="">Todos</option><option value="attention">Requieren atención</option><option value="empty">Agotados</option><option value="low">Inventario bajo</option><option value="sufficient">Suficientes</option><option value="unknown">Desconocidos</option><option value="unconfigured">Mínimo sin configurar</option><option value="negative">Cantidades por revisar</option>
+                <option value="">Todos</option><option value="attention">Requieren atención</option>{!hardware&&<option value="purchase">Requieren compra</option>}<option value="empty">Agotados</option><option value="low">Inventario bajo</option><option value="sufficient">Suficientes</option><option value="unknown">{hardware?'Desconocidos':cleaningInventoryLabels.unknown}</option><option value="unconfigured">Mínimo sin configurar</option><option value="negative">Cantidades por revisar</option>
             </select></label>
         </div>
         <ContentPanel title="Productos y existencias" subtitle="Abre Ver / ajustar para consultar movimientos, registrar un conteo o configurar reposición.">
-            <InventoryProductList packs={packs} activity={activity} presentations={data.procurement.presentations||[]} rows={rows} catalogRows={products}
+            <InventoryProductList packs={packs} activity={activity} presentations={presentations} rows={rows} tableRef={inventoryTable}
                 categories={categories} productLines={productLines} onSelect={id=>{setSelectedTab(undefined);setSelectedId(id);}}/>
         </ContentPanel>
         {scoped.purchaseReviews.length>0&&<details className="alert alert-warning"><summary>Revisar cambios de compras ({scoped.purchaseReviews.length})</summary><InventoryReasonFields context="purchase_review" value={reviewReason} onChange={setReviewReason} idPrefix="purchase-review" disabled={busy}/>{scoped.purchaseReviews.map(p=><div key={p.purchaseId}>{p.date} · {p.voided?'Compra anulada':'Compra editada'} <button disabled={busy||!reviewReason.reasonCode||(reviewReason.reasonCode==='other'&&!reviewReason.reasonExplanation.trim())} onClick={()=>{const metadata=reasonData(reviewReason,'purchase_review');if(metadata)save('inventoryReviewPurchase',{purchaseId:p.purchaseId,...metadata});}}>Confirmar revisión con el motivo capturado</button><p>No se revierte mercancía automáticamente; registra el ajuste físico si corresponde.</p></div>)}</details>}
-        <details className="card p-3 mt-3"><summary>Historial de configuración y confirmaciones</summary><table className="table"><thead><tr><th>Fecha</th><th>Acción</th><th>Referencia</th><th>Motivo</th></tr></thead><tbody>{scoped.changes.map(change=><tr key={change.seq}><td>{new Date(change.recorded_at).toLocaleString('es-MX')}</td><td>{kinds[change.action]||({initial_classification:'Inventario inicial regularizado',product_initial_creation:'Inicial capturado al crear producto',replenishment:'Reposición configurada',allocation:'Desglose confirmado',sale_void:'Anulación y destino físico',reversal:'Compensación',purchase_review_required:'Revisión de recepción pendiente',purchase_review_confirmed:'Recepción revisada'}[change.action]??'Confirmación')}</td><td>{scoped.products.find(p=>String(p.productId)===String(change.reference.productId))?.name||persistence.snapshot.data.sales.find(s=>s.id===change.reference.saleId)?.folio||''}{change.action==='replenishment'&&<small className="d-block">Umbral: {change.reference.previous?.minimum??'Sin configurar'} → {change.reference.next.minimum??'Sin configurar'}; lote habitual: {change.reference.next.batch??'Sin configurar'} {change.reference.next.unit}</small>}</td><td><InventoryReasonSummary reference={change.reference} legacyReason={change.reference.reason||scoped.movements.find(m=>m.id===change.reference.movementId)?.reason||'Seguimiento de la operacion'}/></td></tr>)}</tbody></table></details>
+        {scoped.changes.length>0&&<details className="card p-3 mt-3"><summary>Historial de inventario ({scoped.changes.length})</summary><table className="table"><thead><tr><th>Fecha</th><th>Acción</th><th>Referencia</th><th>Motivo</th></tr></thead><tbody>{scoped.changes.map(change=><tr key={change.seq}><td>{new Date(change.recorded_at).toLocaleString('es-MX')}</td><td>{kinds[change.action]||({initial_classification:'Inventario inicial regularizado',product_initial_creation:'Inicial capturado al crear producto',replenishment:'Reposición configurada',allocation:'Desglose confirmado',sale_void:'Anulación y destino físico',reversal:'Compensación',purchase_review_required:'Revisión de recepción pendiente',purchase_review_confirmed:'Recepción revisada'}[change.action]??'Confirmación')}</td><td>{scoped.products.find(p=>String(p.productId)===String(change.reference.productId))?.name||persistence.snapshot.data.sales.find(s=>s.id===change.reference.saleId)?.folio||''}{change.action==='replenishment'&&<small className="d-block">Umbral: {change.reference.previous?.minimum??'Sin configurar'} → {change.reference.next.minimum??'Sin configurar'}; lote habitual: {change.reference.next.batch??'Sin configurar'} {change.reference.next.unit}</small>}</td><td><InventoryReasonSummary reference={change.reference} legacyReason={change.reference.reason||scoped.movements.find(m=>m.id===change.reference.movementId)?.reason||'Seguimiento de la operacion'}/></td></tr>)}</tbody></table></details>}
         {selectedId!==null&&scoped.products.some(p=>p.productId===selectedId)&&<InventoryProductModal activity={activity} initialTab={selectedTab} key={`${selectedId}:${selectedTab??'default'}`} product={scoped.products.find(p=>p.productId===selectedId)} view={scoped} data={scopedData} categories={catalog.categories} productLines={catalog.productLines} onClose={()=>setSelectedId(null)} onSave={async(name,input)=>{setNotice('');const result=await saveInventory(persistence.command,name,{...input,activity},refresh);if(result.ok)setNotice(result.viewWarning||'Guardado en PostgreSQL.');return result;}}/>}
     </div>;
 }

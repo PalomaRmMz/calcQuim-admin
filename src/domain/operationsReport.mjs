@@ -1,4 +1,4 @@
-import {inventoryReportRows,inventoryReportSummary} from '../services/inventoryReport.js';
+import {filterInventoryReport,inventoryReportRows,inventoryReportSummary} from '../services/inventoryReport.js';
 import {reportedCollection} from './reportPayment.mjs';
 import {productActivity,purchaseActivity} from './activityScope.mjs';
 import {inventoryConvert} from '../services/inventoryUnits.js';
@@ -53,8 +53,8 @@ export function operationsReport({data,inventory,purchases},{activity='LIMPIEZA'
   const quantity=uncertain||record?.unknown||!days||businessUnclassifiedRevenue>0?null:record?.quantity??0;
   return {productId:p.id,name:p.name,unit:p.unit,quantity,perDay:quantity!==null&&days?quantity/days:null,revenue:(record?.revenue??0)/100,reason:quantity===null?'Desglose físico pendiente':days?'Salida observada en el período':'Sin período observado suficiente'};
  }).sort((a,b)=>a.unit.localeCompare(b.unit)||(b.quantity??-1)-(a.quantity??-1));
- const stock=inventoryReportRows(inventory.products.filter(p=>ids.has(String(p.productId))),data.categories,data.productLines);
- const lowStock=stock.filter(r=>['out','low'].includes(r.status)).map(r=>{const rate=rotation.find(p=>String(p.productId)===String(r.productId))?.perDay;return {...r,daysRemaining:rate>0?Number(r.quantity)/rate:null};});
+ const stock=inventoryReportRows(inventory.products.filter(p=>ids.has(String(p.productId))),data.categories,data.productLines,activity);
+ const lowStock=filterInventoryReport(stock,{state:'need'}).map(r=>{const rate=rotation.find(p=>String(p.productId)===String(r.productId))?.perDay;return {...r,daysRemaining:rate>0?Number(r.quantity)/rate:null};});
  const supplierCosts=candidates.map(c=>({...c,name:byId.get(c.productId)?.name??'Producto histórico'})).sort((a,b)=>a.name.localeCompare(b.name)||a.cost-b.cost);
  const preparations=rows.filter(r=>r.nature==='input').map(r=>{
   let expected=null;try{const raw=r.intent?.expectedOutput;expected=raw!=null?Number(inventoryConvert(String(raw),r.intent.expectedUnit,r.unit)):null;}catch{/* Rendimiento no representable: se mantiene desconocido. */}

@@ -1,7 +1,7 @@
 import {correctPresentationPurchase} from './presentationPurchaseCorrection.mjs';
 import {createWebSale,correctWebAwareSale} from './webPhysicalCapture.mjs';
 import {applyWebPayment} from './webPayment.mjs';
-import {commerceCommands,saveCommerce,commercialImport,presentationPurchase} from './commerce.mjs';
+import {commerceCommands,saveCommerce,commercialImport,presentationPurchase,hardwarePurchase,editHardwarePurchase} from './commerce.mjs';
 import {validatePresentation,validateService} from '../../../src/domain/commerce.mjs';
 import { createMobileSale } from '../mobile/domain.mjs';
 import { createCatalogActions } from '../../../src/services/catalogDomain.js';
@@ -24,7 +24,7 @@ export class ApiError extends Error {
 }
 export const catalogCommands = ['addCategory','updateCategory','deleteCategory','addProductLine','updateProductLine','deleteProductLine','addPriceGroup','updatePriceGroup','deletePriceGroup','addProduct','updateProduct','deleteProduct','addProductsBatch','updateProductsBatch'];
 export const procurementCommands = ['savePurchasedItem','savePurchasedItemsBatch','saveSupplyYieldBatch','savePurchasedItemSetup','saveSupplySource','saveSupplyConversion','configureSupplyBatch','configureProductBatch','saveSources','saveSupplier','setSupplyActive','addSupplierPrice','deleteEntity','savePurchase','voidPurchase'];
-export const commandNames = ['correctPresentationPurchase','configureWebPaymentPolicy',...commerceCommands,...catalogCommands,...procurementCommands,'createCommercialSale','createSale','createMobileSale','correctMobileSale','voidSale','configureWholesalePricing'];
+export const commandNames = ['saveHardwarePurchase','editHardwarePurchase','correctPresentationPurchase','configureWebPaymentPolicy',...commerceCommands,...catalogCommands,...procurementCommands,'createCommercialSale','createSale','createMobileSale','correctMobileSale','voidSale','configureWholesalePricing'];
 export function memoryStorage(data) {
   const values = {
     [STORAGE_KEYS.products]: data.products,[STORAGE_KEYS.categories]:data.categories,
@@ -66,7 +66,14 @@ export function executeCommand(data, counters, name, args, options={}) {
   if (!commandNames.includes(name) || !Array.isArray(args) || args.length>3) throw new ApiError(400,'INVALID_COMMAND','Operación no válida.');
   if(['previewCommerceImport','importCommerceCatalog'].includes(name)){if(data.procurement.commerceSchema!==1)throw Error('Migración comercial pendiente.');const result=commercialImport(data,args[0],name==='previewCommerceImport');validateDataset(data);return result;}
   if(name==='correctPresentationPurchase'){const result=correctPresentationPurchase(data,args[0],args[1]);validateDataset(data);return result;}
+  if(name==='editHardwarePurchase'){const result=editHardwarePurchase(data,args[0],args[1]);validateDataset(data);return result;}
   if(name==='savePresentationPurchase'){const result=presentationPurchase(data,args[0],{products:data.products,categories:data.categories,productLines:data.productLines,priceGroups:data.priceGroups});validateDataset(data);return result;}
+  if(name==='saveHardwarePurchase'){
+    const result=hardwarePurchase(data,args[0]);
+    counters.products=Math.max(counters.products??0,...data.products.map(p=>Number(p.id)));
+    validateDataset(data);
+    return result;
+  }
   if(commerceCommands.includes(name)&&!['importCommerceCatalog','previewCommerceImport'].includes(name)){const result=saveCommerce(data,name,args[0]);counters.products=Math.max(counters.products??0,...data.products.map(p=>Number(p.id)));validateDataset(data);return result;}
   if (name==='configureWholesalePricing') {
     if (data.procurement.wholesalePricingSchema!==2) throw new ApiError(409,'WHOLESALE_SCHEMA_NOT_READY','Migración de mayoreo pendiente de autorización.');

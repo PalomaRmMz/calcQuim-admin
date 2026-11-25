@@ -80,6 +80,9 @@
 }
 
 .sidebar-group { min-width: 0; }
+.sidebar-subheading { padding: 10px 4px 3px; font-size: 11px; font-weight: 700; letter-spacing: .045em; text-transform: uppercase; color: #a8bad0; }
+.sidebar-subheading ~ .sidebar-child { margin-left: 5px; }
+.sidebar-current { margin-left: 25px; }
 .sidebar-parent span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .sidebar-chevron { flex-shrink: 0; width: 12px; font-size: 12px; }
 .parent-active > .sidebar-parent { background: #ffffff12; color: #fff; }
