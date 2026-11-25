@@ -13,7 +13,9 @@ const num=n=>{if(n>BigInt(Number.MAX_SAFE_INTEGER))fail('Valor fuera de rango.')
 export function baseQuantity(quantity,factor){const n=decimal(quantity)*decimal(factor);if(n%1000000n)fail('Contenido no representable en seis decimales.');return num(n/1000000n)/1000000;}
 export function validatePresentation(p,products){
  if(['saleEnabled','purchaseEnabled'].some(k=>p?.[k]!==undefined&&typeof p[k]!=='boolean'))fail('Define si la presentaci\u00f3n admite compra y venta.');
- if(!p?.id||!p.name?.trim()||p.name.length>200||!products.some(x=>sameId(x.id,p.productId)&&x.activity==='JARCERIA'))fail('Selecciona un artículo de jarcería y nombre de presentación.');
+ const owner=products.find(x=>sameId(x.id,p?.productId));
+ const supply=!!owner?.inventorySupplyId&&p?.supplyInventory===true&&p.unit==='botella'&&p.purchaseEnabled===false&&p.integerOnly===true;
+ if(!p?.id||!p.name?.trim()||p.name.length>200||(!supply&&owner?.activity!=='JARCERIA'))fail('Selecciona un artículo de jarcería y nombre de presentación.');
  if(!['pieza','paquete','kg','gramo','bolsa','envase','botella'].includes(p.unit))fail('Unidad comercial inválida.');
  decimal(p.factor);decimal(p.price,2,false);
  if(p.baseUnit!==products.find(x=>sameId(x.id,p.productId))?.unit)fail('Unidad base inconsistente.');
@@ -29,7 +31,7 @@ export function validateService(s){
 }
 export function commerceChoices(data){
  const model=data?.procurement??data??{},products=data?.products??[];
- return [...(model.presentations||[]).filter(p=>p.active&&p.saleEnabled!==false&&Number(p.price)>0&&products.some(x=>sameId(x.id,p.productId)&&x.active&&x.available!==false)).map(p=>({key:'presentation:'+p.id,kind:'presentation',refId:p.id,name:p.name,context:'Jarcería · '+(products.find(x=>sameId(x.id,p.productId))?.name||''),tariffs:[{key:'commerce:'+p.id,price:Number(p.price),unit:p.unit,productIds:[p.productId],commerceVersion:COMMERCE_VERSION,presentation:p}]})),
+ return [...(model.presentations||[]).filter(p=>p.active&&p.saleEnabled!==false&&Number(p.price)>0&&products.some(x=>sameId(x.id,p.productId)&&x.active&&x.available!==false)).map(p=>({key:'presentation:'+p.id,kind:'presentation',refId:p.id,name:p.name,context:(p.supplyInventory?'Insumos':'Jarcería')+' · '+(products.find(x=>sameId(x.id,p.productId))?.name||''),tariffs:[{key:'commerce:'+p.id,price:Number(p.price),unit:p.unit,productIds:[p.productId],commerceVersion:COMMERCE_VERSION,presentation:p}]})),
  ...(model.services||[]).filter(s=>s.active).map(s=>({key:'service:'+s.id,kind:'service',refId:s.id,name:s.name,context:'Lavandería',tariffs:[{key:'commerce:'+s.id,price:s.priceMode==='custom'?0:Number(s.price),unit:s.unit,productIds:[],commerceVersion:COMMERCE_VERSION,service:s}]}))];
 }
 export function makeCommerceLine(choice,tariff,mode,value,id,options={}){
@@ -48,7 +50,7 @@ export function makeCommerceLine(choice,tariff,mode,value,id,options={}){
  if(amountCents===0n)fail('El importe debe ser positivo.');
  const laundry=s?.loadPricing?calculateLaundryLoad(s,value,selected):null;
  const price=laundry?.price??num(cents)/100,amount=laundry?.amount??num(amountCents)/100;
- return {id,reference:{kind:choice.kind,id:choice.refId},name:choice.name,context:choice.context,tariffKey:tariff.key,unit:tariff.unit,price,quantity,amount,subtotal:amount,...(laundry?{laundryPricingSnapshot:laundry.snapshot}:{}),discount:0,discountRate:0,entryMode:custom?'amount':'quantity',requestedAmount:custom?amount:null,capturedValue:String(value),commerceVersion:COMMERCE_VERSION,lineType:s?'service':'physical',activity:s?'LAVANDERIA':'JARCERIA',productId:p?.productId??null,presentationId:p?.id??null,serviceId:s?.id??null,addons:structuredClone(addons),description:custom?String(options.description||choice.name).trim().slice(0,200):'',presentationSnapshot:p?structuredClone(p):null,serviceSnapshot:s?structuredClone(s):null,baseQuantity:p?baseQuantity(quantity,p.factor):null,baseUnit:p?.baseUnit??null,packageState:'equivalent_only',eligibleProductIds:p?[p.productId]:[]};
+ return {id,reference:{kind:choice.kind,id:choice.refId},name:choice.name,context:choice.context,tariffKey:tariff.key,unit:tariff.unit,price,quantity,amount,subtotal:amount,...(laundry?{laundryPricingSnapshot:laundry.snapshot}:{}),discount:0,discountRate:0,entryMode:custom?'amount':'quantity',requestedAmount:custom?amount:null,capturedValue:String(value),commerceVersion:COMMERCE_VERSION,lineType:s?'service':'physical',activity:s?'LAVANDERIA':p.supplyInventory?'LIMPIEZA':'JARCERIA',productId:p?.productId??null,presentationId:p?.id??null,serviceId:s?.id??null,addons:structuredClone(addons),description:custom?String(options.description||choice.name).trim().slice(0,200):'',presentationSnapshot:p?structuredClone(p):null,serviceSnapshot:s?structuredClone(s):null,baseQuantity:p?baseQuantity(quantity,p.factor):null,baseUnit:p?.baseUnit??null,packageState:'equivalent_only',eligibleProductIds:p?[p.productId]:[]};
 }
 export function resolveCommerceLine(row,data,id){
  const choice=commerceChoices(data).find(c=>c.kind===row.reference?.kind&&sameId(c.refId,row.reference.id));if(!choice)fail('Concepto inactivo o inexistente.');

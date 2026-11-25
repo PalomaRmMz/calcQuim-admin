@@ -1,0 +1,3 @@
+ALTER TABLE sale_items DROP CONSTRAINT commercial_line_integrity;
+ALTER TABLE sale_items ADD CONSTRAINT commercial_line_integrity CHECK(COALESCE((line_type IS NULL AND presentation_id IS NULL AND service_id IS NULL AND base_quantity IS NULL) OR (line_type='physical' AND activity='JARCERIA' AND presentation_id IS NOT NULL AND product_id IS NOT NULL AND service_id IS NULL AND base_quantity IS NOT NULL) OR (line_type='service' AND activity='LAVANDERIA' AND service_id IS NOT NULL AND product_id IS NULL AND presentation_id IS NULL AND base_quantity IS NULL) OR (line_type='physical' AND activity='LIMPIEZA' AND service_id IS NULL AND presentation_id IS NULL),false));
+DROP TABLE supply_inventory;

@@ -25,8 +25,10 @@ export function mobileRouter(service, { mode = 'synthetic', token = '', enabled 
     const s = await service.read();
     const settings=wholesaleSettings(s.data);
     const capable=(mode!=='operational'||operationalCommerce)&&req.get('X-CalcQuim-Capabilities')?.split(',').includes(COMMERCE_VERSION);
-    const data=capable?s.data:{...s.data,products:s.data.products.filter(p=>p.activity!=='JARCERIA'),procurement:{wholesalePricing:s.data.procurement.wholesalePricing}};
-    res.json({ ...((mode!=='operational'||operationalCommerce)&&s.webPaymentPolicy?.enabled?{mobilePaymentPolicy:s.webPaymentPolicy}:{}), ...(capable?{capabilities:[COMMERCE_VERSION]}:{}), commercialOptions: commercialChoices(data), commercialOptionsVersion: 'official-relations-v1', data: {...Object.fromEntries(['categories', 'productLines', 'priceGroups', 'products'].map(k => [k, data[k]])),...(capable?{presentations:s.data.procurement.presentations||[],services:s.data.procurement.services||[]}:{}),...(settings?.version===WHOLESALE_VERSION?{wholesalePricing:settings}: {})}, revision: s.revision, generation: s.generation, pricingVersion: settings?.version===WHOLESALE_VERSION?WHOLESALE_VERSION:PRICING_VERSION, environment:mode, salesEnabled:true, generatedAt: new Date().toISOString() });
+    const products=s.data.products.filter(p=>!p.inventorySupplyId&&(capable||p.activity!=='JARCERIA'));
+    const presentations=(s.data.procurement.presentations||[]).filter(p=>!p.supplyInventory);
+    const data={...s.data,products,procurement:capable?{...s.data.procurement,presentations}:{wholesalePricing:s.data.procurement.wholesalePricing}};
+    res.json({ ...((mode!=='operational'||operationalCommerce)&&s.webPaymentPolicy?.enabled?{mobilePaymentPolicy:s.webPaymentPolicy}:{}), ...(capable?{capabilities:[COMMERCE_VERSION]}:{}), commercialOptions: commercialChoices(data), commercialOptionsVersion: 'official-relations-v1', data: {...Object.fromEntries(['categories', 'productLines', 'priceGroups', 'products'].map(k => [k, data[k]])),...(capable?{presentations,services:s.data.procurement.services||[]}:{}),...(settings?.version===WHOLESALE_VERSION?{wholesalePricing:settings}: {})}, revision: s.revision, generation: s.generation, pricingVersion: settings?.version===WHOLESALE_VERSION?WHOLESALE_VERSION:PRICING_VERSION, environment:mode, salesEnabled:true, generatedAt: new Date().toISOString() });
   });
   r.get('/sales/status/:key', async (req, res) => {
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(req.params.key)) throw new ApiError(400, 'INVALID_KEY', 'Clave inválida.');

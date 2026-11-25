@@ -78,6 +78,8 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
           return {...current,...await paymentView(c),...await presentationView(c),result:previous.response,replayed:true,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
         }
         if(current.generation!==generation||current.revision!==revision) throw new ApiError(412,'STALE_DATA','Los datos cambiaron. Recarga antes de guardar.');
+        if(channel==='MOVIL'&&['correctMobileSale','voidSale'].includes(name)&&current.data.sales.some(s=>s.id===args[0]&&s.items.some(i=>i.presentationSnapshot?.supplyInventory)))
+          throw new ApiError(403,'CHANNEL_FORBIDDEN','Gestiona esta venta de insumo en Nexo Web.');
         let result;
         const before=structuredClone(current.data);
         try {

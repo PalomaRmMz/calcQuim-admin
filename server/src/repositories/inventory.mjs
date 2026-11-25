@@ -1,3 +1,4 @@
+import {applySupplyMovement,supplyStocks,supplyStockView} from '../services/supplyInventory.mjs';
 import {presentationMovement,presentationStock} from './presentationInventory.mjs';
 import {ApiError} from '../services/commands.mjs';
 import { randomUUID } from 'node:crypto';
@@ -29,10 +30,11 @@ export async function inventoryAccount(c,product){
 }
 export async function appendInventoryMovement(c,product,input){
   await inventoryAccount(c,product);
+  await applySupplyMovement(c,product,input);
   const split=await presentationStock(c,String(product.id));
-  if(!split.length&&product.enforceStock&&input.kind==='sale'){const stock=await baseStock(c,product.id);if(stock==null||inventoryDecimal(stock)+inventoryDecimal(input.quantity)<0n)throw new ApiError(422,'INSUFFICIENT_STOCK','Existencias insuficientes o inventario inicial desconocido.');}
+  if(!product.inventorySupplyId&&!split.length&&product.enforceStock&&input.kind==='sale'){const stock=await baseStock(c,product.id);if(stock==null||inventoryDecimal(stock)+inventoryDecimal(input.quantity)<0n)throw new ApiError(422,'INSUFFICIENT_STOCK','Existencias insuficientes o inventario inicial desconocido.');}
   const id=randomUUID();
-  if(!split.length)await syncPackMovement(c,product,input,id);
+  if(!product.inventorySupplyId&&!split.length)await syncPackMovement(c,product,input,id);
   const fields={id,product_id:String(product.id),kind:input.kind,quantity:input.quantity,unit:normalizeUnit(product.unit),certainty:input.certainty??'confirmed',reason:input.reason,occurred_at:input.occurredAt??new Date().toISOString(),purchase_id:input.purchaseId??null,sale_id:input.saleId??null,sale_ordinal:input.saleOrdinal??null,reversal_of:input.reversalOf??null,origin_key:input.originKey??null,reference:JSON.stringify(input.reference??{})};
   const names=Object.keys(fields);
   await c.query(`INSERT INTO inventory_movements(${names.join(',')}) VALUES(${names.map((_,i)=>'$'+(i+1)).join(',')})`,Object.values(fields));
@@ -60,7 +62,8 @@ export async function readInventory(c,data){
     const events=changes.filter(e=>String(e.reference.purchaseId)===String(p.id)&&['purchase_review_required','purchase_review_confirmed'].includes(e.action));
     return events[0]?.action==='purchase_review_required';
   }).map(p=>({purchaseId:p.id,date:p.date,voided:!!p.voidedAt}));
-  const view={enabled:true,initialControlEnabled:true,initialCaptureMode:'automatic',policy:await inventoryPolicy(c),products,pending,movements,changes,purchaseReviews};
+  const supplies=supplyStockView(await supplyStocks(c),data);
+  const view={...(supplies.length?{supplies}:{}),enabled:true,initialControlEnabled:true,initialCaptureMode:'automatic',policy:await inventoryPolicy(c),products:products.filter(p=>!supplies.some(s=>s.productId===String(p.productId))),pending,movements,changes,purchaseReviews};
   const split=await presentationStock(c);
   const grouped=new Map();
   for(const row of split){

@@ -1,3 +1,4 @@
+import {supplyStocks} from './supplyInventory.mjs';
 import {enablePackInventory} from '../repositories/packInventory.mjs';
 import {webActivationPlan} from './webActivationPlan.mjs';
 import {jarceriaInitialPolicy} from '../../../src/domain/webBusinessDecisions.mjs';
@@ -23,11 +24,13 @@ export function purchaseInventorySnapshot(view,version=1){
 }
 export async function purchaseInventoryView(c,data){
  if(!await purchaseInventoryAvailable(c))return {enabled:false,available:false,rows:[]};
+ const stocked=new Set((await supplyStocks(c)).map(s=>s.purchased_item_id));
  const rows=(await c.query('SELECT *,quantity::text,actual_quantity::text FROM purchase_inventory ORDER BY purchase_id,ordinal')).rows;
  const events=(await c.query("SELECT * FROM inventory_changes WHERE action LIKE 'purchase_inventory_%' ORDER BY seq DESC")).rows;
  return {available:true,enabled:!!(await purchaseAutomationPolicy(c)).enabled,rows:rows.map(row=>{
   const purchase=data.procurement.purchases.find(p=>String(p.id)===row.purchase_id);
-  return {...row,manualInclusion:events.some(e=>e.action==='purchase_inventory_manual_included'&&e.reference.purchaseId===row.purchase_id&&e.reference.itemId===row.item_id),name:row.source.name,date:purchase?.date,supplierId:purchase?.supplierId,supplierName:purchase?.supplierNameSnapshot,voided:!!purchase?.voidedAt,removed:!purchase?.items.some(i=>String(i.id)===row.item_id),productName:product(data,row.product_id)?.name??null,intent:purchaseInventoryIntent(row.source,data.products)};
+  const consumed=events.find(e=>e.action==='purchase_inventory_supply_consumed'&&e.reference.purchaseId===row.purchase_id&&e.reference.itemId===row.item_id)?.reference.inputLiters??null;
+  return {...row,...(stocked.has(row.source.purchasedItemId)?{stockedSupply:true,consumedLiters:consumed}:{}),manualInclusion:events.some(e=>e.action==='purchase_inventory_manual_included'&&e.reference.purchaseId===row.purchase_id&&e.reference.itemId===row.item_id),name:row.source.name,date:purchase?.date,supplierId:purchase?.supplierId,supplierName:purchase?.supplierNameSnapshot,voided:!!purchase?.voidedAt,removed:!purchase?.items.some(i=>String(i.id)===row.item_id),productName:product(data,row.product_id)?.name??null,intent:purchaseInventoryIntent(row.source,data.products)};
  }),events};
 }
 async function audit(c,row,action,reason,extra={}){await inventoryChange(c,'purchase_inventory_'+action,{purchaseId:row.purchase_id,itemId:row.item_id,productId:row.product_id,version:row.version,reason,...extra});}
@@ -47,7 +50,7 @@ async function register(c,data,purchase,item,ordinal,historical,{requireReceipt=
  const intent=purchaseInventoryIntent(item,data.products),row={purchase_id:String(purchase.id),item_id:String(item.id),ordinal,product_id:intent.productId==null?null:String(intent.productId),activity:purchase.activity??intent.activity,nature:intent.nature,state:historical?'reconcile':intent.nature==='input'&&intent.productId?'prepare':'reconcile',source:item,fingerprint:fingerprint(item),quantity:intent.quantity,unit:intent.unit,actual_quantity:null,version:1,historical};
  await c.query('INSERT INTO purchase_inventory(purchase_id,item_id,ordinal,product_id,activity,nature,state,source,fingerprint,quantity,unit,historical) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[row.purchase_id,row.item_id,ordinal,row.product_id,row.activity,row.nature,row.state,JSON.stringify(item),row.fingerprint,row.quantity,row.unit,historical]);
  // Recepciones previas inequívocas se reconocen; los ajustes sin referencia no se adivinan.
- const previous=addedByEdit?[]:(await c.query("SELECT m.* FROM inventory_movements m WHERE purchase_id=$1 AND reference->>'purchaseOrdinal'=$2 AND kind IN ('receipt','prepared') AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[row.purchase_id,String(ordinal)])).rows;
+ const previous=addedByEdit?[]:(await c.query("SELECT m.* FROM inventory_movements m WHERE purchase_id=$1 AND reference->>'purchaseOrdinal'=$2 AND NOT (m.reference ? 'supplyReceipt') AND kind IN ('receipt','prepared') AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[row.purchase_id,String(ordinal)])).rows;
  if(previous.length){await update(c,row,{state:'included',actual_quantity:null});await audit(c,row,'recognized','Movimiento histórico ya registrado',{evidenceMovementIds:previous.map(m=>m.id)});return row;}
  if(!historical&&intent.activity===row.activity&&intent.nature==='finished'&&intent.productId&&intent.quantity){
   try{const baseline=newProduct?{}:await checkBaseline(c,product(data,row.product_id),{date:purchase.date},baselineTreatment);await apply(c,data,row,intent.quantity,'receipt','Entrada automática de compra',baseline);}
@@ -163,6 +166,10 @@ export async function executePurchaseInventory(c,data,name,input){
  const purchase=data.procurement.purchases.find(p=>String(p.id)===row.purchase_id);if(!purchase||(purchase.voidedAt&&name!=='returnPurchaseInventory'))fail('La compra está anulada o no existe.');
  if(input.activity&&row.activity!==input.activity)fail('La compra no pertenece a esta actividad.');
  const reason=why(input);
+ const tracked=(await supplyStocks(c)).some(s=>s.purchased_item_id===row.source.purchasedItemId);
+ if(tracked&&name==='resolvePurchaseInventory'&&(!row.historical||input.action!=='already_included'))fail('La entrada del insumo se registra desde Compras.');
+ if(tracked&&name==='returnPurchaseInventory'&&row.nature==='input')fail('La elaboracion tiene un consumo vinculado. Concilia el insumo y el producto terminado por separado.');
+ if(name==='confirmPurchasePreparation'&&tracked)fail('Registra la elaboracion desde el inventario del insumo.');
  if(name==='returnPurchaseInventory'){
   if(!['applied','included'].includes(row.state))fail('Solo se retira producto cuya entrada está registrada.');
   const q=inventoryConvert(input.quantity,input.unit,row.unit),recorded=await entered(c,row);
@@ -176,9 +183,12 @@ export async function executePurchaseInventory(c,data,name,input){
   if(row.nature!=='input'||row.state!=='applied'||await entered(c,row)!==row.actual_quantity)fail('La preparación tiene retiros o no está vigente; requiere conciliación específica.');
   const q=inventoryConvert(input.quantity,input.unit,row.unit);if(inventoryDecimal(q)<=0n)fail('Confirma la cantidad final real.');
   const entries=await activeEntries(c,row);if(entries.length!==1)fail('La preparación requiere revisión de sus movimientos.');
-  const original=entries[0],baseline=await checkBaseline(c,product(data,row.product_id),{seq:original.seq,createdAt:original.occurred_at.toISOString()},input.baselineTreatment);
+  const original=entries[0];
+  if(tracked&&!original.reference.consumptionId)fail('La elaboracion historica requiere conciliacion fisica especifica.');
+  const linked=tracked?{consumptionId:original.reference.consumptionId,purchasedItemId:original.reference.purchasedItemId,inputLiters:original.reference.inputLiters}:{};
+  const baseline=await checkBaseline(c,product(data,row.product_id),{seq:original.seq,createdAt:original.occurred_at.toISOString()},input.baselineTreatment);
   await appendInventoryMovement(c,product(data,row.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(original.quantity)),reversalOf:original.id,purchaseId:row.purchase_id,reason,originKey:`purchase-prepare-reverse:${original.id}`,reference:{purchaseLotKey:lotKey(row),...baseline}});
-  await update(c,row,{state:'prepare'});await apply(c,data,row,q,'prepared',reason,baseline);return {};
+  await update(c,row,{state:'prepare'});await apply(c,data,row,q,'prepared',reason,{...baseline,...linked});return {};
  }
  if(!['reconcile','prepare'].includes(row.state))fail('El renglón ya fue resuelto; no puede registrarse dos veces.');
  const intent=purchaseInventoryIntent(row.source,data.products);
@@ -232,6 +242,12 @@ export async function syncPurchaseInventory(c,before,data,name,args){
      if(net>0n)await appendInventoryMovement(c,product(data,row.product_id),{kind:'adjustment',quantity:inventoryText(-net),purchaseId:row.purchase_id,reason:why(options),originKey:`purchase-historical-return:${lotKey(row)}:${row.version}`,reference:{purchaseLotKey:lotKey(row),purchaseOrdinal:row.ordinal,physicalReturnConfirmed:true}});
     }else if(removed&&options.disposition!=='retained')fail('Indica si el producto historico permanece o se retira fisicamente.');
     await audit(c,row,'historical_review',why(options),{newItem:item??null,disposition:options.disposition});}
+   if(row.state==='applied'&&physicalChanged&&(await supplyStocks(c)).some(s=>s.purchased_item_id===row.source.purchasedItemId)){
+    if(!removed||!options.confirmed||!['returned','retained'].includes(options.disposition))fail('Confirma el destino fisico de la compra con elaboracion vinculada.');
+    await update(c,row,{state:options.disposition==='retained'?'included':'returned'});
+    await audit(c,row,'disposition',why(options),{physicalDisposition:options.disposition,preparedOutputRetained:true});
+    continue;
+   }
    if(row.state==='applied'&&physicalChanged){
     if(!options.confirmed||!['returned','retained','adjust'].includes(options.disposition))fail('Confirma el destino físico del inventario antes de corregir o anular esta compra.');
     const reason=why(options),net=await entered(c,row);

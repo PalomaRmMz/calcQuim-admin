@@ -1,3 +1,4 @@
+import {supplyInventoryCommands,executeSupplyInventory,syncSupplyPurchases,supplySaleBaseline} from './supplyInventory.mjs';
 import {countPresentationStock,presentationStock,validatePresentationStock} from '../repositories/presentationInventory.mjs';
 import {validateWebPhysical} from '../../../src/domain/webSaleCapture.mjs';
 import {checkBaseline} from './inventoryBaseline.mjs';
@@ -37,7 +38,7 @@ export function exactSaleQuantity(item, product, origin) {
   }catch{return null;}
 }
 
-export const inventoryCommands=[...purchaseInventoryCommands,'inventoryCountPresentations','configurePackInventory','reconcilePackComposition','inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase','receivePresentationPurchase','resolveSaleBreakdowns'];
+export const inventoryCommands=[...purchaseInventoryCommands,...supplyInventoryCommands,'inventoryCountPresentations','configurePackInventory','reconcilePackComposition','inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase','receivePresentationPurchase','resolveSaleBreakdowns'];
 const fail=(message,code='INVENTORY_VALIDATION')=>{throw new ApiError(422,code,message);};
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const findProduct=(data,id)=>{const p=data.products.find(p=>String(p.id)===String(id));if(!p)fail('Selecciona un producto existente.');return p;};
@@ -82,6 +83,7 @@ export async function executeInventoryCommand(c,data,name,args){
   if(!await inventoryAvailable(c))throw new ApiError(503,'INVENTORY_NOT_ENABLED','Inventario pendiente de migración autorizada.');
   if(!Array.isArray(args)||args.length!==1||!args[0]||typeof args[0]!=='object'||Array.isArray(args[0]))fail('Se requiere un formulario de inventario.');
   const input=args[0];
+  if(supplyInventoryCommands.includes(name))return executeSupplyInventory(c,data,name,input);
   if(name==='inventoryCountPresentations'){
     const product=findProduct(data,input.productId);
     if(input.activity!=='JARCERIA')fail('Confirma el rubro de jarceria.');
@@ -177,6 +179,7 @@ export async function executeInventoryCommand(c,data,name,args){
   if(name==='inventoryReverse'){
     const original=(await c.query('SELECT * FROM inventory_movements WHERE id=$1',[uuid(input.movementId)])).rows[0];
     if(!original||['estimate','reversal','sale'].includes(original.kind)||original.reversal_of)fail('Ese movimiento no se revierte por esta acción; una venta requiere confirmar su retorno físico.');
+    if(original.reference?.consumptionId)fail('Corrige la elaboracion junto con el consumo del insumo.');
     if(original.reference?.purchaseLotKey)fail('Utiliza el retiro o corrección del renglón de compra para conservar su trazabilidad.');
     const baseline=await checkBaseline(c,findProduct(data,original.product_id),{seq:original.seq,createdAt:original.occurred_at.toISOString()},input.baselineTreatment);
     const why=reason(input,'reversal');
@@ -240,8 +243,13 @@ export async function syncInventory(c,before,data,name,args){
       }
     }
   }
+  await syncSupplyPurchases(c,before,data,name,args);
   await syncPurchaseInventory(c,before,data,name,args);
-  if(!(await inventoryPolicy(c)).sales_enabled)return;
+  if(!(await inventoryPolicy(c)).sales_enabled){
+    const affected=data.sales.find(s=>['voidSale','correctMobileSale'].includes(name)?String(s.id)===String(args[0]):!before.sales.some(o=>o.id===s.id));
+    if(affected?.items.some(i=>i.presentationSnapshot?.supplyInventory))fail('Activa el inventario antes de modificar una venta de insumo.');
+    return;
+  }
   for(const old of before.sales){
     const current=data.sales.find(s=>s.id===old.id);
     if(!current||(name!=='correctMobileSale'&&(digest(current.items)!==digest(old.items)||current.total!==old.total))||(current.voidedAt!==old.voidedAt&&name!=='voidSale'))fail('No se reescriben ventas con inventario: conserva el original y utiliza la anulación con confirmación física.');
@@ -251,8 +259,9 @@ export async function syncInventory(c,before,data,name,args){
     if((await c.query("SELECT 1 FROM inventory_movements WHERE sale_id=$1 AND kind='return' LIMIT 1",[sale.id])).rowCount)fail('La venta tiene devoluciones: requiere revisión física específica antes de corregir.');
     const outputs=(await c.query("SELECT m.* FROM inventory_movements m WHERE sale_id=$1 AND kind='sale' AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[sale.id])).rows;
     for(const output of outputs) {
-      const baseline=await checkBaseline(c,findProduct(data,output.product_id),{seq:output.seq,createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
-      await appendInventoryMovement(c,findProduct(data,output.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(output.quantity)),reason:args[1].reason,saleId:sale.id,saleOrdinal:output.sale_ordinal,reversalOf:output.id,originKey:'correction-reverse:'+output.id,reference:{packReturnDisposition:args[1].packReturnDisposition,commercialVersion:sale.commercialVersion,...baseline}});
+      const soldProduct=findProduct(data,output.product_id);
+      const baseline=soldProduct.inventorySupplyId?await supplySaleBaseline(c,soldProduct,output,args[1].baselineTreatment==='apply_now'?'apply_now':null):await checkBaseline(c,soldProduct,{seq:output.seq,createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
+      await appendInventoryMovement(c,findProduct(data,output.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(output.quantity)),reason:args[1].reason,saleId:sale.id,saleOrdinal:output.sale_ordinal,reversalOf:output.id,originKey:'correction-reverse:'+output.id,reference:{packReturnDisposition:args[1].packReturnDisposition,physicalReturnConfirmed:!!soldProduct.inventorySupplyId,commercialVersion:sale.commercialVersion,...baseline}});
     }
     await c.query("UPDATE inventory_pending SET state='cancelled' WHERE sale_id=$1 AND state IN ('pending','resolved')",[sale.id]);
     for(const [ordinal,item] of sale.items.entries()) {
@@ -260,7 +269,7 @@ export async function syncInventory(c,before,data,name,args){
       if(!['product','presentation'].includes(item.reference.kind)||!exactSaleQuantity(item,findProduct(data,item.productId),sale.origin))await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});
       else {
         const product=findProduct(data,item.productId);
-        const baseline=await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
+        const baseline=product.inventorySupplyId?{}:await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date},args[1].baselineTreatment);
         const physical=exactSaleQuantity(item,product,sale.origin);
         await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:args[1].reason,saleId:sale.id,saleOrdinal:ordinal,originKey:'correction:'+sale.id+':'+sale.commercialVersion+':'+ordinal,reference:{physicalPresentation:item.presentationSnapshot??null,commercialVersion:sale.commercialVersion,...baseline}});
       }
@@ -277,6 +286,7 @@ export async function syncInventory(c,before,data,name,args){
         await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});continue;
       }
       const product=findProduct(data,item.productId),intent=intents[String(item.productId)]??{};
+      if(product.inventorySupplyId&&(sale.origin!=='WEB'||!item.presentationSnapshot?.supplyInventory||intent.pendingGroup||exactSaleQuantity(item,product,sale.origin)===null))fail('Vende el insumo por botella cerrada en Nexo Web.');
       if(intent.pendingGroup){
         const scope=intent.scope;if(!['line','category'].includes(scope))fail('Selecciona línea o categoría para el desglose.');
         const scopeId=scope==='line'?product.lineId:product.categoryId;if(scopeId==null)fail('El producto no pertenece a ese grupo.');
@@ -284,7 +294,7 @@ export async function syncInventory(c,before,data,name,args){
       }else{
         const physical=exactSaleQuantity(item,product,sale.origin);
         if(physical===null){await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:item.entryMode==='amount'?'amount':'quantity_review'});continue;}
-        try{await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date});}catch(error){if(error.code!=='INVENTORY_BASELINE_REVIEW_REQUIRED')throw error;await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'quantity_review'});continue;}
+        try{if(!product.inventorySupplyId)await checkBaseline(c,product,{createdAt:sale.createdAt,date:sale.date});}catch(error){if(error.code!=='INVENTORY_BASELINE_REVIEW_REQUIRED')throw error;await addPending(c,sale,ordinal,item,{scope:'product',scopeId:product.id,reason:'quantity_review'});continue;}
         await appendInventoryMovement(c,product,{kind:'sale',quantity:inventoryText(-inventoryDecimal(physical)),reason:'Salida por venta con cantidad física',saleId:sale.id,saleOrdinal:ordinal,originKey:`sale:${sale.id}:${ordinal}`,reference:{physicalPresentation:item.presentationSnapshot??null,...(item.webPhysicalQuantity?{webPhysicalQuantity:item.webPhysicalQuantity}:{}),folio:sale.folio,quantityEvidence:item.entryMode==='amount'?(sale.origin==='WEB'?(item.webPhysicalQuantity?'web_confirmed_quantity_v1':'web_amount_rounded_1_decimal'):'exact_monetary_conversion'):'captured_quantity',quantityNumerator:item.quantityNumerator??null,quantityDenominator:item.quantityDenominator??null,reasonCode:'sale_known_quantity',reasonCatalogVersion:1,reasonSource:'system'}});
       }
     }
@@ -298,7 +308,8 @@ export async function syncInventory(c,before,data,name,args){
       const outputs=(await c.query("SELECT m.* FROM inventory_movements m WHERE m.sale_id=$1 AND m.kind='sale' AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[String(sale.id)])).rows;
       for(const output of outputs){
         const treatment=typeof args[1].baselineTreatment==='object'?args[1].baselineTreatment?.[output.product_id]:args[1].baselineTreatment;
-        const baseline=await checkBaseline(c,findProduct(data,output.product_id),{seq:output.seq,createdAt:sale.createdAt,date:sale.date},treatment);
+        const soldProduct=findProduct(data,output.product_id);
+        const baseline=soldProduct.inventorySupplyId?await supplySaleBaseline(c,soldProduct,output,treatment):await checkBaseline(c,soldProduct,{seq:output.seq,createdAt:sale.createdAt,date:sale.date},treatment);
         const returned=(await c.query("SELECT 1 FROM inventory_movements WHERE sale_id=$1 AND product_id=$2 AND kind='return' LIMIT 1",[String(sale.id),output.product_id])).rowCount;
         if(returned)fail('Ya hay devoluciones parciales. Registra únicamente el retorno físico restante y anula sin una segunda reposición.');
         await appendInventoryMovement(c,findProduct(data,output.product_id),{kind:'reversal',quantity:inventoryText(-inventoryDecimal(output.quantity)),reason:why.text,saleId:sale.id,saleOrdinal:output.sale_ordinal,reversalOf:output.id,originKey:`void:${output.id}`,reference:{packReturnDisposition:args[1].packReturnDisposition,physicalReturnConfirmed:true,...baseline,...why.metadata}});

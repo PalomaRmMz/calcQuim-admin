@@ -58,8 +58,28 @@ export function operationsReport({data,inventory,purchases},{activity='LIMPIEZA'
  const supplierCosts=candidates.map(c=>({...c,name:byId.get(c.productId)?.name??'Producto histórico'})).sort((a,b)=>a.name.localeCompare(b.name)||a.cost-b.cost);
  const preparations=rows.filter(r=>r.nature==='input').map(r=>{
   let expected=null;try{const raw=r.intent?.expectedOutput;expected=raw!=null?Number(inventoryConvert(String(raw),r.intent.expectedUnit,r.unit)):null;}catch{/* Rendimiento no representable: se mantiene desconocido. */}
-  return {purchaseId:r.purchase_id,itemId:r.item_id,name:r.name,productName:r.productName,state:r.state,voided:r.voided,date:r.date,inputQuantity:r.source.quantity,inputUnit:r.source.unit,expected,actual:n(r.actual_quantity),unit:r.unit,realYield:n(r.actual_quantity)!=null&&n(r.source.quantity)>0?Number(r.actual_quantity)/Number(r.source.quantity):null,achievement:expected>0&&n(r.actual_quantity)!=null?Number(r.actual_quantity)/expected*100:null};
+  const actual=n(r.actual_quantity),consumed=n(r.consumedLiters);
+  const basis=consumed??n(r.source.quantity);
+  if(r.stockedSupply&&consumed!=null&&expected!=null&&n(r.source.quantity)>0&&r.source.unit==='litro')
+    expected=expected*consumed/Number(r.source.quantity);
+  return {purchaseId:r.purchase_id,itemId:r.item_id,name:r.name,productName:r.productName,state:r.state,voided:r.voided,date:r.date,consumedLiters:consumed,inputQuantity:r.source.quantity,inputUnit:r.source.unit,expected,actual:n(r.actual_quantity),unit:r.unit,realYield:actual!=null&&basis>0?actual/basis:null,achievement:expected>0&&actual!=null&&basis>0?actual/expected*100:null};
  });
+ if(activity!=='JARCERIA'){
+  const metrics=new Map((inventory.supplies||[]).map(s=>[s.purchasedItemId,s]));
+  for(const m of inventory.movements.filter(m=>m.kind==='prepared'&&m.reference?.consumptionId&&!m.reference?.purchaseLotKey)){
+   const supply=metrics.get(m.reference.purchasedItemId),date=new Date(m.occurred_at).toLocaleDateString('en-CA',{timeZone:'America/Mexico_City'});
+   if(!supply||!inPeriod(date))continue;
+   const actual=n(m.quantity),consumed=n(m.reference.inputLiters);
+   const conversion=data.procurement.supplyConversions.find(c=>c.active&&c.purchasedItemId===supply.purchasedItemId&&String(c.outputProductId)===m.product_id);
+   let expected=null;
+   try{
+    const y=conversion?.yield;
+    if(y&&consumed>0)expected=Number(inventoryConvert(y.outputQuantity,y.outputUnit,m.unit))*Number(inventoryConvert(consumed,'litro',y.inputUnit))/y.inputQuantity;
+   }catch{/* Incompatible units leave expected yield unspecified. */}
+   preparations.push({purchaseId:null,itemId:m.id,name:supply.name,productName:byId.get(m.product_id)?.name,state:'applied',date,
+    consumedLiters:consumed,inputQuantity:null,inputUnit:'',expected,actual,unit:m.unit,realYield:consumed>0?actual/consumed:null,achievement:expected>0?100*actual/expected:null});
+  }
+ }
  const pendingPurchases=liveRows.filter(r=>['reconcile','prepare'].includes(r.state)).map(r=>({purchaseId:r.purchase_id,itemId:r.item_id,name:r.name,productName:r.productName,date:r.date,state:r.state,historical:r.historical,nature:r.nature}));
  const legacyCommercialCents=s=>s.total!=null?Math.round(s.total*100):s.items.reduce((sum,i)=>sum+Math.round(i.amount*100),0);
  const paymentRows=activity==='GENERAL'?data.sales.filter(s=>inPeriod(s.date)).map(s=>{const payment=reportedCollection(s);return {saleId:s.id,folio:s.folio,date:s.date,payment:s.payment,voided:!!s.voidedAt,commercial:(s.monetary?.calculatedCents??legacyCommercialCents(s))/100,rounding:(s.monetary?.roundingCents??0)/100,documentTotal:s.total??null,confirmedCollected:payment.confirmed==null?null:payment.confirmed/100,collected:payment.collected==null?null:payment.collected/100,policy:s.monetary?.policyVersion??'Histórica sin política nueva',settlement:payment.status,cents:{commercial:s.monetary?.calculatedCents??legacyCommercialCents(s),rounding:s.monetary?.roundingCents??0,collected:payment.collected,confirmed:payment.confirmed}};}):null;

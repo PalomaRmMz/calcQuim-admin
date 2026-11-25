@@ -162,7 +162,7 @@ export default function CommercialSaleForm({snapshot,onSave,onClose,onRefresh}){
         {options.map(option=><option key={option.key} value={option.key}>{option.label}</option>)}
        </select>:null:<div className="sale-ticket-modes" role="group" aria-label={`Modo de ${title}`}>
         {[['quantity','Cantidad'],['amount','Monto']].map(([mode,label])=><label key={mode}>
-         <input type="radio" name={`sale-mode-${row.id}`} checked={row.mode===mode} disabled={busy||mode==='amount'&&tariff?.price===0}
+         <input type="radio" name={`sale-mode-${row.id}`} checked={row.mode===mode} disabled={busy||mode==='amount'&&(tariff?.price===0||tariff?.presentation?.supplyInventory)}
           onChange={()=>update(row.id,{mode,value:'',physical:''})}/>{label}
         </label>)}
        </div>}</td>
