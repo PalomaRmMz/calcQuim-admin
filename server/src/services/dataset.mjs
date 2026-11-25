@@ -1,3 +1,4 @@
+import {presentationStock} from '../repositories/presentationInventory.mjs';
 import {readSalesHistory,readOfficialSale} from '../repositories/salesHistory.mjs';
 import {webPaymentSnapshot,configureWebPayment} from './webPayment.mjs';
 import {purchaseInventoryView,receiveHardwarePurchase,syncHardwarePurchaseEdit} from './purchaseInventory.mjs';
@@ -19,6 +20,7 @@ export function canonical(value) {
 export function createDatasetService(pool, schema='calcquim_sandbox',purpose='synthetic') {
   schema=schemaName(schema);
   if(!['synthetic','operational'].includes(purpose))throw new Error('Purpose no autorizado.');
+  const presentationView=async c=>{const rows=await presentationStock(c);return rows.length?{presentationInventoryProductIds:[...new Set(rows.map(row=>row.productId))]}:{};};
   const paymentView=async c=>{const p=await webPaymentSnapshot(c);return p.enabled?{webPaymentPolicy:{enabled:true,version:p.policy_version}}:{};};
   const inventoryPending=async c=>await inventoryAvailable(c)?(await c.query("SELECT sale_id AS \"saleId\",ordinal,scope,reason FROM inventory_pending WHERE state='pending' ORDER BY sale_id,ordinal")).rows:[];
   const read=(c,lock=false)=>readDataset(c,lock,purpose==='operational'?'operational':false);
@@ -37,7 +39,7 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
   return {
     salesHistory:q=>transaction(c=>readSalesHistory(c,q,purpose),true),
     officialSale:(id,q)=>transaction(c=>readOfficialSale(c,id,q,purpose),true),
-    read:()=>transaction(async c=>({...await read(c),...await paymentView(c),inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false}),true),
+    read:()=>transaction(async c=>({...await read(c),...await paymentView(c),...await presentationView(c),inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false}),true),
     purchaseInventory:()=>transaction(async c=>purchaseInventoryView(c,(await read(c)).data),true),
     operations:()=>transaction(async c=>{const snapshot=await read(c);return {data:snapshot.data,revision:snapshot.revision,inventory:await readInventory(c,snapshot.data),purchases:await purchaseInventoryView(c,snapshot.data)};},true),
     inventory:()=>transaction(async c=>readInventory(c,(await read(c)).data),true),
@@ -73,7 +75,7 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
         if(previous) {
           if(previous.request_hash!==hash) throw new ApiError(409,'IDEMPOTENCY_CONFLICT','La clave ya corresponde a otra operación.');
           // Se devuelve resultado original y estado actual para no regresar la vista a una revisión antigua.
-          return {...current,...await paymentView(c),result:previous.response,replayed:true,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
+          return {...current,...await paymentView(c),...await presentationView(c),result:previous.response,replayed:true,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
         }
         if(current.generation!==generation||current.revision!==revision) throw new ApiError(412,'STALE_DATA','Los datos cambiaron. Recarga antes de guardar.');
         let result;
@@ -106,7 +108,7 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
             await c.query('UPDATE sales SET record=$2 WHERE id=$1',[String(sale.id),JSON.stringify({...sale,items:[]})]);
           }}
         await c.query('INSERT INTO idempotency_requests(request_key,request_hash,response) VALUES($1,$2,$3)',[requestKey,hash,JSON.stringify(result)]);
-        return {...current,...await paymentView(c),revision:current.revision+1,result,replayed:false,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
+        return {...current,...await paymentView(c),...await presentationView(c),revision:current.revision+1,result,replayed:false,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
       });
     },
   };

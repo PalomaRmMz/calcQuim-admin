@@ -4,7 +4,7 @@ import {Button} from '@mui/material';
 import {PersistenceContext} from '../context/PersistenceContext.js';
 import {useCatalog} from '../context/CatalogHooks.js';
 import useInventoryReport from '../hooks/useInventoryReport.js';
-import {inventoryReportRows,filterInventoryReport,inventoryReportSummary,inventoryReportLabels,inventoryReportCsv,inventoryReportWorkbook,inventoryExportColumns} from '../services/inventoryReport.js';
+import {inventoryReportRows,filterInventoryReport,inventoryReportSummary,inventoryReportLabels,presentationStockText,inventoryReportCsv,inventoryReportWorkbook,inventoryExportColumns} from '../services/inventoryReport.js';
 import {saveInventory} from '../services/inventoryClient.js';
 import {categoryStyle} from '../utils/categoryColors.js';
 import {unitLabel} from '../utils/units.js';
@@ -31,16 +31,16 @@ export default function InventoryReport({activity='LIMPIEZA'}){
     const selectedProduct=view.products.find(p=>p.productId===selected);
     const categoryRecord=r=>catalog.categories.find(c=>c.id===r.categoryId);
     const columns=[
-        {accessorKey:'name',header:'Producto',Cell:({cell,row})=><button className="inventory-product-button" onClick={()=>setSelected(row.original.productId)}><span className="table-text-primary category-accent" style={categoryStyle(categoryRecord(row.original))}>{cell.getValue()}</span></button>},
+        {accessorKey:'name',header:'Producto',Cell:({cell,row})=><button className="inventory-product-button" onClick={()=>setSelected(row.original.productId)} disabled={Boolean(row.original.presentationStock)}><span className="table-text-primary category-accent" style={categoryStyle(categoryRecord(row.original))}>{cell.getValue()}</span></button>},
         {accessorKey:'category',header:'Categoría',Cell:({cell,row})=><span className="classification-label category-accent" style={categoryStyle(categoryRecord(row.original))}>{cell.getValue()}</span>},
-        {id:'quantity',header:'Existencia aproximada',accessorFn:r=>r.quantity===null?null:Number(r.quantity),Cell:({row})=>row.original.quantity??'Sin determinar'},
+        {id:'quantity',header:'Existencia aproximada',accessorFn:r=>r.quantity===null?null:Number(r.quantity),Cell:({row})=>row.original.presentationStock?presentationStockText(row.original.presentationStock):row.original.quantity??'Sin determinar'},
         {accessorKey:'unit',header:'Unidad',Cell:({cell})=>unitLabel(cell.getValue())},
         {id:'minimum',header:'Punto de reposición',accessorFn:r=>r.minimum===null?null:Number(r.minimum),Cell:({row})=>row.original.minimum??'Sin configurar'},
         {id:'usualBatch',header:'Lote habitual',accessorFn:r=>r.usualBatch===null?null:Number(r.usualBatch),Cell:({row})=>row.original.usualBatch??'Sin configurar'},
         {accessorKey:'stateLabel',header:'Estado de abastecimiento',Cell:({row})=><><strong className={row.original.negative?'text-danger':row.original.status==='low'?'text-warning':''}>{row.original.stateLabel}</strong>{row.original.missingThreshold&&row.original.status!=='unconfigured'&&<small className="d-block">Sin punto de reposición</small>}</>},
         {id:'suggestion',header:'Cantidad sugerida',accessorFn:r=>r.suggestedQuantity===null?null:Number(r.suggestedQuantity),Cell:({row})=>row.original.suggestedQuantity===null?'No calculable':<>{row.original.suggestedQuantity} {unitLabel(row.original.unit)}<small className="d-block">Lote habitual orientativo</small></>},
         {id:'action',header:'Abastecimiento',accessorFn:r=>r.action},
-        {id:'actions',header:'Ficha de inventario',enableSorting:false,Cell:({row})=><TableActions label={row.original.name} onEdit={()=>setSelected(row.original.productId)} showDelete={false}/>},
+        {id:'actions',header:'Ficha de inventario',enableSorting:false,Cell:({row})=><TableActions label={row.original.name} onEdit={row.original.presentationStock?undefined:()=>setSelected(row.original.productId)} showDelete={false}/>},
     ];
     async function download(format){
         if(exporting||error)return;setExporting(true);setMessage('');

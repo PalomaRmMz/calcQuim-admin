@@ -53,6 +53,6 @@ export function calculateItems(items) {
 }
 
 export function quantityLabel(quantity, unit) {
- const plural = {carga: "cargas", litro: "litros", pieza: "piezas", paquete: "paquetes", rollo: "rollos", envase: "envases", botella: "botellas", bolsa: "bolsas"};
+ const plural = {carga: "cargas", litro: "litros", pieza: "piezas", par: "pares", paquete: "paquetes", rollo: "rollos", envase: "envases", botella: "botellas", bolsa: "bolsas"};
  return `${quantity} ${Number(quantity) === 1 ? unit : plural[unit] || unit}`;
 }

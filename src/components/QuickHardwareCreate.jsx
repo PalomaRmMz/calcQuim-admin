@@ -6,6 +6,7 @@ import InitialInventoryFields,{emptyProductInitial,productInitialPayload} from '
 import {Field} from './ProcurementFields';
 import {hardwareCreationBundle,hardwarePresentationUnits,wholeSaleUnit} from '../domain/hardwareCreation.mjs';
 import {productInitialInventory} from '../domain/productInitialInventory.mjs';
+import {webHardwarePresentationName} from '../domain/webHardwarePresentationName.mjs';
 
 const newPresentation=()=>({id:crypto.randomUUID(),name:'',unit:'pieza',factor:'1',price:''});
 const modes=[['piece','Solo por pieza'],['pack','Solo por paquete'],['both','Por paquete y pieza'],['advanced','Más opciones']];
@@ -39,6 +40,8 @@ export default function QuickHardwareCreate({categories,onClose,onSave,purchaseD
   setBusy(true);
   try{
    const bundle=hardwareCreationBundle(advanced?{...form,initialEnabled:false}:form);
+   bundle.presentations=bundle.presentations.map((row,index)=>({...row,
+    name:webHardwarePresentationName(bundle.product.name,advanced?{...row,name:form.presentations[index].name}:row,bundle.product.unit)}));
    let initialQuantity=bundle.initialInventory?.quantity;
    if(advanced){
     bundle.presentations=bundle.presentations.map((row,index)=>({...row,id:form.presentations[index].id}));

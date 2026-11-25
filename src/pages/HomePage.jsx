@@ -38,9 +38,10 @@ export default function HomePage(){
  const packs=new Map((inventory?.packInventory?.products??[]).map(pack=>[String(pack.productId),pack]));
  const counts={empty:0,low:0};
  const restock={LIMPIEZA:0,JARCERIA:0};
- let cleaningWithoutCount=0;
+ let cleaningWithoutCount=0,emptyPresentations=0;
  const catalog=new Map((persistence?.snapshot.data.products??[]).map(product=>[String(product.id),product]));
  for(const product of inventory?.products??[]){
+  if(product.presentationStock)emptyPresentations+=product.presentationStock.filter(f=>f.balance==='0').length;
   const state=inventoryAttention(product,packs.get(String(product.productId))).key;
   const activity=productActivity(catalog.get(String(product.productId)));
   if(state==='unknown'&&activity==='LIMPIEZA')cleaningWithoutCount++;
@@ -61,6 +62,7 @@ export default function HomePage(){
   [stockReady?restock.LIMPIEZA:0,'Reposición de limpieza','/inventarios/limpieza'],
   [stockReady?restock.JARCERIA:0,'Reposición de jarcería','/inventarios/jarceria'],
   [stockReady?cleaningWithoutCount:0,'Limpieza sin conteo confirmado','/inventarios/limpieza'],
+  [stockReady?emptyPresentations:0,'Presentaciones agotadas de jarcería','/inventarios/jarceria'],
   [pending,'Ventas pendientes de desglose','/ventas?pendientes=1'],
   [revisions.length,'Revisiones con diferencias pendientes','/ventas?revisiones=1'],
  ].filter(([count])=>count>0);

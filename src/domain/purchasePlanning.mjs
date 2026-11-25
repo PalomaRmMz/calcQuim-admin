@@ -80,7 +80,7 @@ export function planningRows(data, view) {
         }
         const name = getProductDisplayName(product, activity === 'JARCERIA' ?
             data.procurement.hardwareCategories : data.categories, activity === 'JARCERIA' ? [] : data.productLines);
-        rows.set(id, {id, name, activity, unit, quantity: attention.quantity, minimum, status, presentations});
+        rows.set(id, {id, name, activity, unit, quantity: attention.quantity, minimum, status, presentations, presentationStock:stock.presentationStock});
     }
     for (const item of registeredInputs(data.procurement)) {
         const id = supplyKey(item.id), unit = normalizeUnit(item.unit);

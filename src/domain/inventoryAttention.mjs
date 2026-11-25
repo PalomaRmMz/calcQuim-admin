@@ -12,6 +12,7 @@ function decimal(value){
 }
 
 export function inventoryAttention(product, pack) {
+ if(product.presentationStock?.length)return {key:'presentation',label:'Inventario por presentación',tone:'secondary',quantity:null};
  const raw=pack?.known&&pack.total!=null?pack.total:product.quantity;
  const amount=decimal(raw),minimum=decimal(product.minimum);
  const quantity=amount===null?null:Number(raw);

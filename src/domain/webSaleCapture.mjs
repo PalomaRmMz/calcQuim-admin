@@ -1,8 +1,10 @@
 import {makeLine,repriceLines} from '../../server/src/mobile/sale.mjs';
 import {normalizeText} from '../utils/catalogUtils.js';
 import {decimal} from './commerce.mjs';
+import {webHardwareSaleUnit} from './webHardwarePresentationName.mjs';
 export const WEB_PHYSICAL_VERSION='web-confirmed-quantity-v1';
-export const captureUnit=tariff=>tariff?.presentation?.key==='rollo'&&tariff.unit==='pieza'&&Number(tariff.presentation.factor)===1?'rollo':tariff?.unit;
+export const captureUnit=tariff=>tariff?.presentation?.key==='rollo'&&tariff.unit==='pieza'&&Number(tariff.presentation.factor)===1?'rollo':
+ webHardwareSaleUnit(tariff?.presentation)??tariff?.unit;
 export function hardwareAmountQuantity(tariff,value){
  const amount=decimal(value,2),price=decimal(tariff.price,2);
  const scaled=amount*1000000n;

@@ -1,3 +1,4 @@
+import {presentationMovement,presentationStock} from './presentationInventory.mjs';
 import {ApiError} from '../services/commands.mjs';
 import { randomUUID } from 'node:crypto';
 import {syncPackMovement,readPackInventory,baseStock} from './packInventory.mjs';
@@ -28,12 +29,14 @@ export async function inventoryAccount(c,product){
 }
 export async function appendInventoryMovement(c,product,input){
   await inventoryAccount(c,product);
-  if(product.enforceStock&&input.kind==='sale'){const stock=await baseStock(c,product.id);if(stock==null||inventoryDecimal(stock)+inventoryDecimal(input.quantity)<0n)throw new ApiError(422,'INSUFFICIENT_STOCK','Existencias insuficientes o inventario inicial desconocido.');}
+  const split=await presentationStock(c,String(product.id));
+  if(!split.length&&product.enforceStock&&input.kind==='sale'){const stock=await baseStock(c,product.id);if(stock==null||inventoryDecimal(stock)+inventoryDecimal(input.quantity)<0n)throw new ApiError(422,'INSUFFICIENT_STOCK','Existencias insuficientes o inventario inicial desconocido.');}
   const id=randomUUID();
-  await syncPackMovement(c,product,input,id);
+  if(!split.length)await syncPackMovement(c,product,input,id);
   const fields={id,product_id:String(product.id),kind:input.kind,quantity:input.quantity,unit:normalizeUnit(product.unit),certainty:input.certainty??'confirmed',reason:input.reason,occurred_at:input.occurredAt??new Date().toISOString(),purchase_id:input.purchaseId??null,sale_id:input.saleId??null,sale_ordinal:input.saleOrdinal??null,reversal_of:input.reversalOf??null,origin_key:input.originKey??null,reference:JSON.stringify(input.reference??{})};
   const names=Object.keys(fields);
   await c.query(`INSERT INTO inventory_movements(${names.join(',')}) VALUES(${names.map((_,i)=>'$'+(i+1)).join(',')})`,Object.values(fields));
+  if(split.length)await presentationMovement(c,split,input,id);
   return id;
 }
 export async function readInventory(c,data){
@@ -58,5 +61,14 @@ export async function readInventory(c,data){
     return events[0]?.action==='purchase_review_required';
   }).map(p=>({purchaseId:p.id,date:p.date,voided:!!p.voidedAt}));
   const view={enabled:true,initialControlEnabled:true,initialCaptureMode:'automatic',policy:await inventoryPolicy(c),products,pending,movements,changes,purchaseReviews};
-  const packInventory=await readPackInventory(c,data,view);return packInventory?{...view,packInventory}:view;
+  const split=await presentationStock(c);
+  const grouped=new Map();
+  for(const row of split){
+    if(!grouped.has(row.productId))grouped.set(row.productId,[]);
+    grouped.get(row.productId).push({...row,name:data.procurement.presentations.find(p=>p.id===row.presentationId)?.name??row.presentationId});
+  }
+  for(const product of products)if(grouped.has(String(product.productId)))product.presentationStock=grouped.get(String(product.productId));
+  const packInventory=await readPackInventory(c,data,view);
+  if(packInventory)packInventory.products=packInventory.products.filter(p=>!grouped.has(String(p.productId)));
+  return packInventory?{...view,packInventory}:view;
 }

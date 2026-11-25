@@ -1,3 +1,4 @@
+import {countPresentationStock,presentationStock,validatePresentationStock} from '../repositories/presentationInventory.mjs';
 import {validateWebPhysical} from '../../../src/domain/webSaleCapture.mjs';
 import {checkBaseline} from './inventoryBaseline.mjs';
 import {enablePackInventory,reconcilePack,invalidatePackCorrection,packEnabled,validatePackDefinitions} from '../repositories/packInventory.mjs';
@@ -9,7 +10,7 @@ import { randomUUID,createHash } from 'node:crypto';
 import { ApiError } from './commands.mjs';
 import { normalizeUnit } from '../../../src/utils/units.js';
 import { inventoryConvert,inventoryDecimal,inventoryText } from '../../../src/services/inventoryUnits.js';
-import { inventoryAvailable,inventoryPolicy,inventoryChange,inventoryAccount,appendInventoryMovement,readInventory } from '../repositories/inventory.mjs';
+import { inventoryAvailable,inventoryPolicy,inventoryChange,inventoryAccount,appendInventoryMovement,readInventory,purchaseAutomationPolicy } from '../repositories/inventory.mjs';
 import { resolveInventoryReason,movementReasonContext } from '../../../src/services/inventoryReasons.js';
 import { validDate } from '../../../src/utils/procurementUtils.js';
 // An exact monetary conversion can establish a six-decimal physical quantity.
@@ -36,7 +37,7 @@ export function exactSaleQuantity(item, product, origin) {
   }catch{return null;}
 }
 
-export const inventoryCommands=[...purchaseInventoryCommands,'configurePackInventory','reconcilePackComposition','inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase','receivePresentationPurchase','resolveSaleBreakdowns'];
+export const inventoryCommands=[...purchaseInventoryCommands,'inventoryCountPresentations','configurePackInventory','reconcilePackComposition','inventoryMovement','inventoryEstimate','inventoryInitial','inventoryCorrectInitial','inventoryCount','inventoryReplenishment','inventoryReverse','inventoryAllocate','inventoryReviewPurchase','receivePresentationPurchase','resolveSaleBreakdowns'];
 const fail=(message,code='INVENTORY_VALIDATION')=>{throw new ApiError(422,code,message);};
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const findProduct=(data,id)=>{const p=data.products.find(p=>String(p.id)===String(id));if(!p)fail('Selecciona un producto existente.');return p;};
@@ -68,8 +69,10 @@ async function movement(c,data,input,kind){
   if(kind==='return'){
     const sale=data.sales.find(s=>String(s.id)===String(input.saleId));
     if(!sale)fail('La devolución debe referir a una venta existente.');
+    if(!(await presentationStock(c,String(product.id))).length){
     const outputs=(await c.query("SELECT m.*,abs(m.quantity)::text AS amount,COALESCE((SELECT sum(r.quantity+COALESCE((SELECT sum(v.quantity) FROM inventory_movements v WHERE v.reversal_of=r.id),0)) FROM inventory_movements r WHERE r.sale_id=m.sale_id AND r.product_id=m.product_id AND r.kind='return'),0)::text AS returned FROM inventory_movements m WHERE m.sale_id=$1 AND m.product_id=$2 AND m.kind='sale' AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[String(sale.id),String(product.id)])).rows;
     if(!outputs.length||scaled>outputs.reduce((s,r)=>s+inventoryDecimal(r.amount),0n)-inventoryDecimal(outputs[0].returned))fail('La devolución excede la salida pendiente de retornar.');
+    }
   }
   const id=await appendInventoryMovement(c,product,{kind,quantity:value,certainty:kind==='estimate'?'estimated':'confirmed',reason:why.text,occurredAt,purchaseId:input.purchaseId,saleId:kind==='return'?input.saleId:null,reference:ref});
   if(kind==='estimate')await c.query('UPDATE inventory_accounts SET anchor_id=$2 WHERE product_id=$1',[String(product.id),id]);
@@ -79,6 +82,18 @@ export async function executeInventoryCommand(c,data,name,args){
   if(!await inventoryAvailable(c))throw new ApiError(503,'INVENTORY_NOT_ENABLED','Inventario pendiente de migración autorizada.');
   if(!Array.isArray(args)||args.length!==1||!args[0]||typeof args[0]!=='object'||Array.isArray(args[0]))fail('Se requiere un formulario de inventario.');
   const input=args[0];
+  if(name==='inventoryCountPresentations'){
+    const product=findProduct(data,input.productId);
+    if(input.activity!=='JARCERIA')fail('Confirma el rubro de jarceria.');
+    await inventoryAccount(c,product);
+    if(!(await inventoryPolicy(c)).sales_enabled||!(await purchaseAutomationPolicy(c)).enabled)fail('Activa primero las salidas de ventas y las recepciones de compras.');
+    await countPresentationStock(c,product,data.procurement.presentations??[],input);
+    await inventoryChange(c,'presentation_count',{productId:product.id,reason:input.reason.trim(),counts:input.counts});
+    return {};
+  }
+  if(input.productId!=null&&['inventoryEstimate','inventoryInitial','inventoryCount','inventoryCorrectInitial','reconcilePackComposition','inventoryMovement'].includes(name)&&
+    !(name==='inventoryMovement'&&input.kind==='return')&&(await presentationStock(c,String(input.productId))).length)
+    fail('Este producto se concilia mediante conteos separados por presentacion.');
   if(name==='configurePackInventory'){if(input.approved!==true)fail('Confirma la activación coordinada de paquetes.');await enablePackInventory(c);await inventoryChange(c,'pack_activation',{reason:'Seguimiento físico habilitado sin inferir composición histórica'});return {};}
   if(purchaseInventoryCommands.includes(name))return executePurchaseInventory(c,data,name,input);
   if(input.activity){
@@ -146,7 +161,7 @@ export async function executeInventoryCommand(c,data,name,args){
   if(name==='inventoryEstimate')return movement(c,data,input,'estimate');
   if(name==='inventoryMovement'){
     const current=(await readInventory(c,data)).products.find(p=>String(p.productId)===String(input.productId));
-    if(!current?.initialMovementId)fail('Registra primero el inventario inicial.','INITIAL_REQUIRED');
+    if(!current?.initialMovementId&&!(input.kind==='return'&&current?.presentationStock?.length))fail('Registra primero el inventario inicial.','INITIAL_REQUIRED');
     if(!['prepared','receipt','adjustment','waste','return','correction'].includes(input.kind))fail('Tipo de movimiento no válido.');
     return movement(c,data,input,input.kind);
   }
@@ -212,6 +227,7 @@ export async function allocate(c,data,input){
 export async function syncInventory(c,before,data,name,args){
   if(!await inventoryAvailable(c))return;
   await validatePackDefinitions(c,data);
+  await validatePresentationStock(c,data);
   // La unidad y los IDs con historia no pueden cambiar silenciosamente.
   const accounts=(await c.query('SELECT product_id,unit FROM inventory_accounts')).rows;
   for(const a of accounts){const p=data.products.find(p=>String(p.id)===a.product_id);if(!p||normalizeUnit(p.unit)!==a.unit)fail('El producto tiene historial o configuración de inventario; conserva su ID y unidad.');}

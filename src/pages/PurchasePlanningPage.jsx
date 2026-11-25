@@ -12,7 +12,7 @@ import './PurchasePlanningPage.css';
 const statuses = {
     empty: 'Agotado', low: 'Por debajo del mínimo', atMinimum: 'En el mínimo',
     unknown: 'Existencia desconocida', negative: 'Saldo por revisar',
-    unconfigured: 'Sin mínimo', sufficient: 'Existencia suficiente', input: 'Compra manual',
+    unconfigured: 'Sin mínimo', sufficient: 'Existencia suficiente', input: 'Compra manual', presentation: 'Inventario por presentación',
 };
 const emptyDraft = {};
 const stockTone = {empty: 'danger', low: 'warning', atMinimum: 'warning', negative: 'danger', sufficient: 'success'};
@@ -31,6 +31,7 @@ function PurchasePlanCell({column, entry}) {
                 onChange={e => update({selected: e.target.checked})}/>
             <span><strong className="table-text-primary">{row.name}</strong>
                 <span className="classification-label">{row.articleId != null ? 'Insumo para preparación' : row.activity === 'LIMPIEZA' ? 'Limpieza terminada' : activities[row.activity]}</span></span></label></>;
+    if (column === 'stock' && row.presentationStock) return <ul className="list-unstyled mb-0">{row.presentationStock.map(f=><li key={f.presentationId}>{f.name} · {f.balance} paquetes</li>)}</ul>;
     if (column === 'stock' && row.articleId != null) return <span className="badge text-bg-secondary">Compra manual</span>;
     if (column === 'stock') return <><strong className="table-text-primary">{row.quantity === null ? 'Desconocida' : row.quantity + ' ' + unitLabel(row.unit)}</strong>
             <small>Mínimo {row.minimum ?? 'sin configurar'} {row.minimum !== null && unitLabel(row.unit)}</small>
