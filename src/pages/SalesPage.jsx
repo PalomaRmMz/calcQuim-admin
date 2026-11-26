@@ -1,4 +1,6 @@
 import {webHardwareSaleUnit} from '../domain/webHardwarePresentationName.mjs';
+import {faCalendarDay, faCartShopping, faChartColumn, faDollarSign} from "@fortawesome/free-solid-svg-icons";
+import SummaryCard from "../components/SummaryCard";
 import {quantityLabel} from '../utils/salesUtils.js';
 import WebMoneyBreakdown from '../components/WebMoneyBreakdown';
 import { saleCapturedAt, saleCommercialReview, saleLastChangedAt, saleMoment } from '../services/saleAuditView.mjs';
@@ -29,6 +31,24 @@ import { loadSales, persistSales, createSale, voidSale } from "../services/sales
 import { getBadgeStyle } from "../utils/classificationUtils.js";
 import Feedback from "../components/Feedback";
 import { Link, useSearchParams } from "react-router";
+
+// Cambia esta constante a true para mostrar las tarjetas de resumen.
+const MOSTRAR_RESUMEN_VENTAS = false;
+
+function SalesSummary({ sales, filtered }) {
+    const valid = filtered.filter(sale => !sale.voidedAt);
+    const totalCents = valid.reduce((sum, sale) => sum + Math.round(sale.total * 100), 0);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+    const todayCents = sales.reduce((sum, sale) =>
+        !sale.voidedAt && sale.date === today ? sum + Math.round(sale.total * 100) : sum, 0);
+
+    return <section className="row g-2 mb-3" aria-label="Resumen de ventas">
+        <SummaryCard title="Ventas del período" value={valid.length} icon={faCartShopping} variant="blue" />
+        <SummaryCard title="Importe del período" value={money(totalCents / 100)} icon={faDollarSign} variant="green" />
+        <SummaryCard title="Venta promedio" value={money(valid.length ? totalCents / (100 * valid.length) : 0)} icon={faChartColumn} variant="purple" />
+        <SummaryCard title="Vendido hoy" value={money(todayCents / 100)} icon={faCalendarDay} variant="yellow" />
+    </section>;
+}
 
 export default function SalesPage() {
     const persistence = useContext(PersistenceContext);
@@ -132,6 +152,7 @@ export default function SalesPage() {
     ];
 
     return <div className="container-fluid px-0">
+        {MOSTRAR_RESUMEN_VENTAS && <SalesSummary sales={sales} filtered={filtered} />}
 
         {notice && <div className="alert alert-success" role="status">{notice}</div>}
         {pendingSales.length > 0 && <aside className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2" aria-label="Ventas por desglosar"><div><strong>{pendingSales.length} {pendingSales.length === 1 ? 'venta por desglosar' : 'ventas por desglosar'}</strong><span className="d-block">{pendingRows} {pendingRows === 1 ? 'renglón pendiente' : 'renglones pendientes'} en todo el historial.</span></div><button className="btn btn-warning" onClick={() => { setOnlyPending(true); setOnlyReviews(false); setOrigin(''); setFrom(''); setTo(''); }}>Ver ventas pendientes</button><div className="w-100 d-flex flex-wrap gap-2">{pendingSales.map(sale => <button key={sale.id} className="btn btn-sm btn-outline-dark" onClick={() => setSelected(sale)}>{sale.folio} · {pendingCount(sale)} por completar</button>)}</div></aside>}
