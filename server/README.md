@@ -1,5 +1,50 @@
 # CalcQuim local — Fase 2
 
+## Versiones preparadas de Nexo Web
+
+El lanzador puede iniciar una sola versión de `artifacts/web-releases`. Cada
+entrega sellada incluye la compilación Web, Express, dependencias del servidor
+y migraciones. El lanzador valida el manifiesto y arranca la Web compilada,
+Express y la API móvil de la misma carpeta. La configuración operativa se lee
+desde el proyecto principal, fuera de la entrega. Sin una versión seleccionada,
+el lanzador conserva el arranque habitual.
+
+`node scripts/preflight-prepared-release.mjs <candidata> <anterior>` comprueba
+ambas entregas, el ledger operativo y la coincidencia con un respaldo restaurado.
+La comprobación es de sólo lectura y no cambia la selección.
+
+`selectOfflineRelease` reserva la transición y exige puertos cerrados y una
+verificación de la ventana antes de sustituir un solo puntero. La misma operación
+selecciona una entrega anterior. No copia archivos sobre procesos activos, no
+detiene servicios ni ejecuta migraciones. El lanzador instalado previamente no
+puede verificar borradores Web abiertos ni solicitudes móviles pendientes.
+Mientras falte una fuente de evidencia para esas sesiones, no hay transición
+operativa automática. Un puerto cerrado o un PostgreSQL sin transacciones a la
+vista no acredita que la jornada esté drenada.
+
+### Control de mantenimiento
+
+Las entregas con protocolo de mantenimiento comparten una compuerta entre
+Express Web y los listeners móviles. Al cerrarla, las escrituras recién
+llegadas reciben HTTP 503 y `MAINTENANCE_WRITE_CLOSED`. Las consultas siguen
+disponibles. La compuerta registra tanto las peticiones de escritura admitidas
+como las operaciones de servicio que aún están concluyendo. Un cliente que
+pierde la conexión puede consultar el resultado idempotente después del commit.
+
+Una pestaña compatible se registra y sólo puede confirmar la espera cuando
+declara haber terminado y no tiene un diálogo ni una venta pendiente. La
+confirmación vuelve inactiva la interfaz existente sin desmontarla. La
+desaparición de una pestaña o el paso del tiempo dejan la sesión sin verificar.
+
+El controlador de transición exige cobertura independiente de sesiones Web
+anteriores y de colas móviles para sellar el ingreso. La validación de una
+candidata se ejecuta con escrituras cerradas y la reversión se ensaya antes de
+reabrir. Una respuesta ambigua al reabrir requiere comprobar el estado antes de
+intentar otra transición. El lanzador operativo anterior carece de cobertura
+para borradores y colas, por lo que no existe un proveedor operativo de esa
+evidencia. En mantenimiento, el comando ordinario de cierre rechaza la parada
+mientras falte la comprobación.
+
 **Modo operativo local:** ver [inicio, respaldo y comprobación de persistencia](../docs/POSTGRESQL_OPERATIVO.md). Cuando existe la activación privada validada, `npm.cmd start` utiliza exclusivamente la configuración operativa. La información de fases anteriores que sigue abajo describe el funcionamiento previo.
 
 **Actualización: persistencia de ensayo implementada.** Ver [inicio, API, Postman,

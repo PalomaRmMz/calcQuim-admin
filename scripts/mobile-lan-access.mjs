@@ -15,7 +15,7 @@ export function localLan(host,interfaces=networkInterfaces()){
   if(matches.length!==1)throw new Error('La IP autorizada no pertenece a una interfaz local activa.');
   return {host,cidr:AUTHORIZED_SUBNET};
 }
-export function mobileLanApp(express,router,{cidr=AUTHORIZED_SUBNET}={}){
+export function mobileLanApp(express,router,{cidr=AUTHORIZED_SUBNET,ingress}={}){
   const app=express();app.disable('x-powered-by');app.set('trust proxy',false);
   app.use((req,res,next)=>{
     res.set('Cache-Control','no-store');
@@ -23,6 +23,7 @@ export function mobileLanApp(express,router,{cidr=AUTHORIZED_SUBNET}={}){
     next();
   });
   app.get('/health',(_req,res)=>res.json({status:'ok',service:'CalcQuim móvil',environment:'operational'}));
+  if(ingress)app.use('/api/mobile/v1',ingress);
   app.use('/api/mobile/v1',router);
   app.use((_req,res)=>res.status(404).json({error:{code:'NOT_FOUND'}}));
   app.use((error,_req,res,_next)=>{
