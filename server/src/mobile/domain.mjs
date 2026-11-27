@@ -5,14 +5,20 @@ import { catalogChoices, PRICING_VERSION } from './catalog.mjs';
 import { makeLine, total, repriceLines } from './sale.mjs';
 import { localDate } from '../../../src/utils/salesUtils.js';
 import { WHOLESALE_VERSION, wholesaleEnabled } from '../../../src/domain/wholesalePricing.mjs';
+import {hasPhysicalSaleLine,isRecharge,makeRechargeLine,PHONE_RECHARGE,RECHARGE_KEY,rechargeOnlyCorrection} from '../../../src/domain/phoneRecharge.mjs';
 
-export function createMobileSale(sales, input, catalog, sequence = 0) {
+export function createMobileSale(sales, input, catalog, sequence = 0, {webRecharge=false}={}) {
   const expected = wholesaleEnabled(catalog) ? WHOLESALE_VERSION : PRICING_VERSION;
   if (input.pricingVersion != null && input.pricingVersion !== expected) throw new Error('El protocolo de precios cambió. Sincroniza y revisa el borrador antes de confirmar.');
   if (!['Efectivo', 'Transferencia', 'Tarjeta'].includes(input.payment)) throw new Error('Selecciona forma de pago.');
   if (!Array.isArray(input.items) || !input.items.length || input.items.length > 200) throw new Error('Agrega entre 1 y 200 renglones.');
   const choices = catalogChoices(catalog);
   let items = input.items.map(row => {
+    if(row.reference?.kind===PHONE_RECHARGE){
+      if(!webRecharge||input.origin!=='WEB'||input.commerceVersion!==COMMERCE_VERSION||row.reference.id!==RECHARGE_KEY||
+        Object.keys(row).some(key=>!['reference','value'].includes(key)))throw Error('Concepto de recarga inválido o no habilitado en este canal.');
+      return makeRechargeLine(row.value,randomUUID());
+    }
     if(['presentation','service'].includes(row.reference?.kind)){if(input.commerceVersion!==COMMERCE_VERSION)throw Error('Capacidad comercial requerida.');return resolveCommerceLine(row,catalog,randomUUID());}
     const choice = choices.find(c => c.kind === row.reference?.kind && String(c.refId) === String(row.reference?.id));
     if (!choice) throw new Error('La referencia comercial ya no está disponible.');
@@ -35,10 +41,13 @@ export function correctMobileSale(sales, id, input) {
   const previous = sales.find(s => s.id === id);
   if (!previous || (previous.origin !== 'MOVIL' && !previous.commerceVersion) || previous.voidedAt) throw new Error('Selecciona una venta móvil vigente.');
   if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 1000) throw new Error('Escribe el motivo de corrección (máximo 1000 caracteres).');
-  if (previous.items.some(i=>i.lineType!=='service') && input.physicalTreatment !== 'apply_difference') throw new Error('Confirma la aplicación de la diferencia física de esta revisión.');
   if (!Array.isArray(input.values) || input.values.length !== previous.items.length) throw new Error('La corrección conserva los renglones y sus referencias originales.');
   if(input.serviceOptions!=null&&(!Array.isArray(input.serviceOptions)||input.serviceOptions.length!==previous.items.length||input.serviceOptions.some(o=>o!=null&&(typeof o!=='object'||Array.isArray(o)||Object.keys(o).some(k=>!['addons','description'].includes(k))))))throw Error('Opciones de servicio inválidas.');
+  const rechargeOnly=rechargeOnlyCorrection(previous,input);
+  if (!rechargeOnly && previous.items.some(hasPhysicalSaleLine) && input.physicalTreatment !== 'apply_difference') throw new Error('Confirma la aplicación de la diferencia física de esta revisión.');
   const corrected = previous.items.map((old, ordinal) => {
+    if(isRecharge(old))return makeRechargeLine(input.values[ordinal],old.id);
+    if(rechargeOnly)return old;
     if(old.commerceVersion)return historicalCommerceLine(old,input.values[ordinal],input.serviceOptions?.[ordinal]||{});
     const tariff = { key: old.tariffKey, price: old.normalPrice ?? old.price, unit: old.unit, productIds: old.eligibleProductIds, ...(old.pricingVersion===WHOLESALE_VERSION?{pricingVersion:old.pricingVersion,wholesalePrice:old.wholesalePrice,amountPolicy:old.amountPolicy,priceSource:old.priceSource,priceSourceId:old.priceSourceId}: {}) };
     const choice = { kind: old.reference.kind, refId: old.reference.id, name: old.name, context: old.context, tariffs: [tariff] };
@@ -46,9 +55,10 @@ export function correctMobileSale(sales, id, input) {
     if (!old.pricingVersion) return {...calculateHistoricalItems([{...updated,pricingVersion:undefined}])[0],pricingVersion:undefined};
     return updated;
   });
-  const items = corrected.some(row=>row.pricingVersion===WHOLESALE_VERSION)?repriceLines(corrected):corrected;
+  const items = !rechargeOnly&&corrected.some(row=>row.pricingVersion===WHOLESALE_VERSION)?repriceLines(corrected):corrected;
+  if(rechargeOnly&&items.every((item,n)=>item.amount===previous.items[n].amount))throw Error('No hay cambios comerciales.');
   const at = new Date().toISOString(), version = (previous.commercialVersion || 1) + 1;
-  const updated = { ...previous, items, total: total(items), commercialVersion: version, breakdowns: {},
+  const updated = { ...previous, items, total: total(items), commercialVersion: version, breakdowns: rechargeOnly?previous.breakdowns??{}:{},
     revisions: [...(previous.revisions || []), { at, channel: input.auditChannel==='MOVIL'?'MOVIL':'WEB', reason: input.reason.trim(), version: version - 1, id: previous.id, date: previous.date, payment: previous.payment, origin: previous.origin, items: previous.items, total: previous.total, breakdowns: previous.breakdowns || {} }],
     history: [...previous.history, { action: 'commercial_correction', channel: input.auditChannel==='MOVIL'?'MOVIL':'WEB', at, reason: input.reason.trim(), version }],
   };
@@ -58,6 +68,7 @@ export function correctMobileSale(sales, id, input) {
 }
 
 function receiptItem(item) {
+  if(isRecharge(item))return {name:item.name,lineType:item.lineType,activity:item.activity,amount:item.amount};
   const {name,quantity,unit,price,amount,entryMode,discountRate}=item;
-  return {name,...(item.activity==='JARCERIA'&&item.context?{productName:item.context.replace(/^Jarcería · /,'')}:{}),quantity,unit,price,amount,entryMode,discountRate,...(item.commerceVersion?{commerceVersion:item.commerceVersion,activity:item.activity,lineType:item.lineType,presentationSnapshot:item.presentationSnapshot,baseQuantity:item.baseQuantity,baseUnit:item.baseUnit,addons:item.addons,description:item.description,...(item.laundryPricingSnapshot?{laundryPricingSnapshot:item.laundryPricingSnapshot}:{})}:{}),...(item.pricingVersion===WHOLESALE_VERSION?{pricingVersion:item.pricingVersion,priceTier:item.priceTier,normalPrice:item.normalPrice,wholesalePrice:item.wholesalePrice,amountPolicy:item.amountPolicy,confirmedQuantity:item.confirmedQuantity,quantityNumerator:item.quantityNumerator,quantityDenominator:item.quantityDenominator}: {})};
+  return {name,...(item.webPhysicalQuantity?{webPhysicalQuantity:item.webPhysicalQuantity}:{}),...(item.activity==='JARCERIA'&&item.context?{productName:item.context.replace(/^Jarcería · /,'')}:{}),quantity,unit,price,amount,entryMode,discountRate,...(item.commerceVersion?{commerceVersion:item.commerceVersion,activity:item.activity,lineType:item.lineType,presentationSnapshot:item.presentationSnapshot,baseQuantity:item.baseQuantity,baseUnit:item.baseUnit,addons:item.addons,description:item.description,...(item.laundryPricingSnapshot?{laundryPricingSnapshot:item.laundryPricingSnapshot}:{})}:{}),...(item.pricingVersion===WHOLESALE_VERSION?{pricingVersion:item.pricingVersion,priceTier:item.priceTier,normalPrice:item.normalPrice,wholesalePrice:item.wholesalePrice,amountPolicy:item.amountPolicy,confirmedQuantity:item.confirmedQuantity,quantityNumerator:item.quantityNumerator,quantityDenominator:item.quantityDenominator}: {})};
 }

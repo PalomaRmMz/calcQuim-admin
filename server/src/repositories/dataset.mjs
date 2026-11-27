@@ -12,7 +12,7 @@ const omit = (obj, fields) => Object.fromEntries(Object.entries(obj).filter(([k]
 const digest = value => createHash('sha256').update(value).digest('hex');
 
 export async function readDataset(c, lock = false, allowRehearsal = false) {
-  const state = (await c.query(`SELECT * FROM dataset_state WHERE singleton=true${lock ? ' FOR UPDATE' : ''}`)).rows[0];
+  const state = (await c.query(`SELECT *, EXISTS(SELECT 1 FROM schema_migrations WHERE version=18) AS phone_recharge_enabled FROM dataset_state WHERE singleton=true${lock ? ' FOR UPDATE' : ''}`)).rows[0];
   const allowed=allowRehearsal==='operational'?['operational']:allowRehearsal===true?['synthetic','migration_rehearsal']:['synthetic'];
   if (!state || !allowed.includes(state.purpose)) throw new Error('Dataset no autorizado.');
   const data = { categories:[], productLines:[], priceGroups:[], products:[], sales:[], procurement:structuredClone(state.metadata) };
@@ -44,7 +44,7 @@ export async function readDataset(c, lock = false, allowRehearsal = false) {
     if(p.receipt===true)p.receipt=receipts.get(key(p.id))?.[0];
   }
   for(const sale of data.sales)sale.items=saleItems.get(key(sale.id))??[];
-  return { data, revision:Number(state.revision), generation:state.generation, counters:state.counters };
+  return { data, revision:Number(state.revision), generation:state.generation, counters:state.counters, phoneRechargeEnabled:state.phone_recharge_enabled };
 }
 
 function columns(name, r, wholesale = false) {
@@ -102,7 +102,7 @@ export async function writeDataset(c, data, counters) {
     for (const [ordinal,r] of (p.revisions ?? []).entries()) await insert(c,'purchase_revisions',{purchase_id:key(p.id),ordinal,record:JSON.stringify(r)},['purchase_id','ordinal']);
     if (p.receipt) await insert(c,'purchase_receipts',{purchase_id:key(p.id),record:JSON.stringify(p.receipt),sha256:digest(Buffer.from(p.receipt.dataUrl.split(',')[1],'base64'))},['purchase_id']);
   }
-  for (const s of data.sales) for (const [ordinal,r] of s.items.entries()) await insert(c,'sale_items',{sale_id:key(s.id),ordinal,product_id:key(r.productId),record:JSON.stringify(r),quantity:r.quantity,unit:r.unit,price:r.price,amount:r.amount,...(commerce?{activity:r.activity??null,line_type:r.lineType??null,presentation_id:r.presentationId??null,service_id:r.serviceId??null,base_quantity:r.baseQuantity??null}:{})},['sale_id','ordinal']);
+  for (const s of data.sales) for (const [ordinal,r] of s.items.entries()) await insert(c,'sale_items',{sale_id:key(s.id),ordinal,product_id:key(r.productId),record:JSON.stringify(r),quantity:r.quantity??null,unit:r.unit??null,price:r.price??null,amount:r.amount,...(commerce?{activity:r.activity??null,line_type:r.lineType??null,presentation_id:r.presentationId??null,service_id:r.serviceId??null,base_quantity:r.baseQuantity??null}:{})},['sale_id','ordinal']);
   await c.query('UPDATE dataset_state SET revision=revision+1,metadata=$1,counters=$2 WHERE singleton=true',[
     JSON.stringify(omit(data.procurement,[...Object.keys(collections),'presentations','services'])),JSON.stringify(counters),
   ]);

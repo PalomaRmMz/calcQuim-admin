@@ -2,6 +2,8 @@ import {COMMERCE_VERSION,makeCommerceLine} from '../../../src/domain/commerce.mj
 import { calculateItems } from './adminSales.mjs';
 import { PRICING_VERSION } from './catalog.mjs';
 import { WHOLESALE_VERSION } from '../../../src/domain/wholesalePricing.mjs';
+import {isRecharge} from '../../../src/domain/phoneRecharge.mjs';
+import {commercialCents,moneyCents} from '../../../src/domain/webPayment.mjs';
 
 export function makeLine(choice, tariff, entryMode, value, id, confirmedQuantity = null, options = {}) {
   if(tariff?.commerceVersion===COMMERCE_VERSION)return makeCommerceLine(choice,tariff,entryMode,value,id,options);
@@ -19,7 +21,12 @@ export function makeLine(choice, tariff, entryMode, value, id, confirmedQuantity
   return { ...result, confirmedQuantity, id, reference: { kind: choice.kind, id: choice.refId }, name: choice.name, context: choice.context, tariffKey: tariff.key, capturedValue: text, eligibleProductIds: [...tariff.productIds] };
 }
 export const repriceLines = lines => calculateItems(lines);
-export const total = lines => lines.reduce((sum, l) => sum + Math.round(l.amount * 100), 0) / 100;
+export function total(lines) {
+  if(!lines.some(isRecharge))return lines.reduce((sum,line)=>sum+Math.round(line.amount*100),0)/100;
+  const cents=commercialCents(lines),amount=cents/100;
+  if(moneyCents(amount)!==cents)throw Error('El total supera la precisión monetaria admitida.');
+  return amount;
+}
 export const money = value => `$${Number(value).toFixed(2)}`;
 export const labels = { product: 'Producto', line: 'Línea', priceGroup: 'Grupo de precios', category: 'Categoría' };
 export function requestBody(draft, catalog) {
@@ -28,5 +35,7 @@ export function requestBody(draft, catalog) {
   if (![PRICING_VERSION,WHOLESALE_VERSION].includes(catalog.pricingVersion)) throw new Error('Sincroniza con el servidor actualizado antes de confirmar. El descuento fijo anterior ya no es válido.');
   const recalculated = repriceLines(draft.lines);
   if (recalculated.some((line,n)=>line.amount!==draft.lines[n].amount||line.quantity!==draft.lines[n].quantity)) throw new Error('El borrador conserva un cálculo anterior. Revisa sus renglones antes de confirmar.');
-  return { ...(draft.lines.some(l=>l.commerceVersion)?{commerceVersion:COMMERCE_VERSION}:{}), pricingVersion:catalog.pricingVersion, revision: catalog.revision, generation: catalog.generation, payment: draft.payment, items: repriceLines(draft.lines).map(l => ({ ...(l.commerceVersion?{commerceVersion:l.commerceVersion,addons:l.addons.map(a=>a.id),description:l.description}:{}), reference: l.reference, tariffKey: l.tariffKey, price: l.price, unit: l.unit, entryMode: l.entryMode, value: l.capturedValue, confirmedQuantity:l.confirmedQuantity, ...(l.pricingVersion===WHOLESALE_VERSION?{pricingVersion:l.pricingVersion,priceTier:l.priceTier}: {}) })) };
+  return { ...(draft.lines.some(l=>l.commerceVersion)?{commerceVersion:COMMERCE_VERSION}:{}), pricingVersion:catalog.pricingVersion, revision: catalog.revision, generation: catalog.generation, payment: draft.payment, items: recalculated.map(l => isRecharge(l)
+    ? {reference:l.reference,value:l.capturedValue}
+    : { ...(l.commerceVersion?{commerceVersion:l.commerceVersion,addons:l.addons.map(a=>a.id),description:l.description}:{}), reference: l.reference, tariffKey: l.tariffKey, price: l.price, unit: l.unit, entryMode: l.entryMode, value: l.capturedValue, confirmedQuantity:l.confirmedQuantity, ...(l.pricingVersion===WHOLESALE_VERSION?{pricingVersion:l.pricingVersion,priceTier:l.priceTier}: {}) }) };
 }

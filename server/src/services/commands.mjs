@@ -3,6 +3,7 @@ import {createWebSale,correctWebAwareSale} from './webPhysicalCapture.mjs';
 import {applyWebPayment} from './webPayment.mjs';
 import {commerceCommands,saveCommerce,commercialImport,presentationPurchase,hardwarePurchase,editHardwarePurchase} from './commerce.mjs';
 import {validatePresentation,validateService} from '../../../src/domain/commerce.mjs';
+import {isRecharge} from '../../../src/domain/phoneRecharge.mjs';
 import { createMobileSale } from '../mobile/domain.mjs';
 import { createCatalogActions } from '../../../src/services/catalogDomain.js';
 import { catalogCollectionError } from '../../../src/services/catalogValidation.js';
@@ -53,6 +54,7 @@ export function validateDataset(data) {
   if (issues.length) throw new ApiError(422,'INVALID_RELATION',issues[0]);
   validateSales(data.sales);
   for(const sale of data.sales)for(const item of sale.items) {
+    if(isRecharge(item))continue;
     if(item.reference&& !['product','presentation','service'].includes(item.reference.kind)) {
       const collection=({line:'productLines',category:'categories',priceGroup:'priceGroups'})[item.reference.kind];
       if(!collection||!data[collection].some(row=>String(row.id)===String(item.reference.id)))throw new ApiError(422,'INVALID_RELATION','La agrupación tiene historial comercial; conserva su identificador.');
@@ -134,7 +136,7 @@ export function executeCommand(data, counters, name, args, options={}) {
         if (!p.purchases.some(x=>x.id===args[0]&&!x.voidedAt)) throw new ApiError(404,'NOT_FOUND','Compra no encontrada o anulada.');
         p=procurement.voidPurchase(p,args[0]); break;
       case 'correctMobileSale': data.sales=correctWebAwareSale(data.sales,args[0],args[1]); break;
-      case 'createCommercialSale': data.sales=createWebSale(data.sales,{...args[0],origin:'WEB'},{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
+      case 'createCommercialSale': data.sales=createWebSale(data.sales,{...args[0],origin:'WEB'},{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0,options.phoneRechargeEnabled); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
       case 'createMobileSale': data.sales=createMobileSale(data.sales,{...args[0],origin:'MOVIL'},{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); result={ok:true,receipt:data.sales[0].originalReceipt}; break;
       case 'createSale': data.sales=createSale(data.sales,args[0],{...catalog,wholesalePricing:data.procurement.wholesalePricing},counters.sales??0); break;
       case 'voidSale': data.sales=voidSale(data.sales,args[0]); break;

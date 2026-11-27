@@ -6,6 +6,7 @@ import {PersistenceContext} from '../context/PersistenceContext.js';
 import {inventoryAttention,requiresInventoryPurchase} from '../domain/inventoryAttention.mjs';
 import {saleCommercialReview} from '../services/saleAuditView.mjs';
 import {money} from '../utils/salesUtils.js';
+import {commerceReport,saleActivityLabels} from '../domain/commerce.mjs';
 import {productActivity} from '../domain/activityScope.mjs';
 
 const dateOptions={timeZone:'America/Mexico_City'};
@@ -50,12 +51,13 @@ export default function HomePage(){
    restock[activity]++;
   }
  }
+ const todayReport=commerceReport(current,'','',[...catalog.values()]);
  const pendingIds=new Set((persistence?.snapshot.inventoryPending??[]).map(row=>String(row.saleId)));
  const pending=sales.filter(sale=>!sale.voidedAt&&pendingIds.has(String(sale.id))).length;
  const revisions=sales.filter(sale=>saleCommercialReview(sale).pending);
  const date=new Intl.DateTimeFormat('es-MX',{dateStyle:'full',...dateOptions}).format(new Date(`${today}T18:00:00Z`));
  const stockReady=inventory?.enabled&&!failed;
- const metrics=[['Vendido hoy',persistence?money(current.reduce((sum,sale)=>sum+Number(sale.total),0)):'—',faCoins,'blue'],
+ const metrics=[['Total cobrado confirmado hoy',persistence&&todayReport.confirmedCollected!=null?money(todayReport.confirmedCollected):'—',faCoins,'blue'],
   ['Ventas de hoy',persistence?current.length:'—',faReceipt,'blue'],['Productos agotados',stockReady?counts.empty:'—',faBoxOpen,'red'],['Inventario bajo',stockReady?counts.low:'—',faCircleExclamation,'amber']];
  const actions=[['Registrar venta','/ventas?nueva=1',faReceipt],['Registrar compra','/compras?nueva=1',faCartShopping],['Inventarios','/inventarios/limpieza',faWarehouse],['Reportes','/reportes',faChartColumn]];
  const alerts=[
@@ -72,6 +74,10 @@ export default function HomePage(){
    <div className={`nexo-home-icon nexo-home-icon-${tone}`}><FontAwesomeIcon icon={icon}/></div>
    <div><span>{label}</span><strong>{value}</strong></div>
   </div>)}</div>
+  {persistence&&<section className="nexo-home-panel mb-3"><h3>Importes de hoy por actividad</h3>
+   <dl className="d-flex flex-wrap gap-3 mb-0">{Object.entries(todayReport.byActivity)
+    .filter(([key,value])=>key!=='SIN_CLASIFICAR'||value>0).map(([key,value])=><div key={key}><dt>{saleActivityLabels[key]}</dt><dd className="mb-0">{money(value)}</dd></div>)}</dl>
+  </section>}
   <div className="nexo-home-panels">
   <section className="nexo-home-panel"><h3>Accesos rápidos</h3><div className="nexo-home-actions">
    {actions.map(([label,path,icon],index)=><Link key={path} className={`nexo-home-action ${index===0?'nexo-home-action-primary':''}`} to={path}>

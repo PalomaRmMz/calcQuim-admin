@@ -1,3 +1,6 @@
+import {isRecharge} from '../domain/phoneRecharge.mjs';
+import {saleActivityLabels,saleItemActivity} from '../domain/commerce.mjs';
+import {assertPayment} from '../domain/webPayment.mjs';
 import { joinedSupply, sourceIdentity } from './supplyModel.js';
 import { list, isRecord } from "./exportSnapshot.js";
 import { auditCalcQuim } from "./dataAudit.js";
@@ -255,14 +258,20 @@ function procurementSheets(ctx) {
     return sheets;
 }
 
+function validPaymentForExport(sale) {
+    try { assertPayment(sale); return true; } catch { return false; }
+}
+
 function salesSheets(ctx) {
     const sales = [], details = [];
+    const productsById = new Map(ctx.products.map(product=>[String(product.id),product]));
     for (const sale of list(ctx.snapshot.sales)) {
         const items = ctx.nestedRecords(sale.items, "Sale", sale.id, "items");
-        sales.push({confirmedCollected:sale.monetarySettlement?sale.monetarySettlement.lastConfirmedCollectedCents/100:sale.total,settlementState:sale.monetarySettlement?.status??sale.voidMonetary?.settlementStatus??'',commercialTotal:sale.monetary?sale.monetary.calculatedCents/100:sale.total,roundingAdjustment:sale.monetary?sale.monetary.roundingCents/100:0,paymentPolicy:sale.monetary?.policyVersion??'Histórica sin redondeo', ...sale, state: sale.voidedAt ? "Anulada" : "Registrada", count: list(sale.items).length });
-        for (const item of items) details.push(ctx.checked("SaleItem", item.productId, () => ({ ...item, saleId: sale.id, folio: sale.folio, date: sale.date, currentProduct: item.productId == null && item.reference ? `Agrupación: ${item.name}` : ctx.lookup("products", item.productId, "SaleItem", sale.id, "productId", true)?.displayName || "No encontrado", unit: unitLabel(item.unit), entryMode: item.entryMode === "amount" ? "Por monto" : item.entryMode === "quantity" ? "Por cantidad" : "No registrado", groupId: item.group?.id, groupName: item.group?.name, groupColorId: item.group?.colorId })));
+        const rechargeTotal=items.reduce((sum,item)=>sum+(isRecharge(item)?Math.round(item.amount*100):0),0)/100;
+        sales.push({rechargeTotal,confirmedCollected:sale.monetarySettlement?sale.monetarySettlement.lastConfirmedCollectedCents/100:sale.total,settlementState:sale.monetarySettlement?.status??sale.voidMonetary?.settlementStatus??'',commercialTotal:((sale.monetary?.calculatedCents??Math.round(sale.total*100))-Math.round(rechargeTotal*100))/100,roundingAdjustment:sale.monetary?sale.monetary.roundingCents/100:0,paymentPolicy:sale.monetary?.policyVersion??'Histórica sin redondeo', ...sale, state: sale.voidedAt ? "Anulada" : "Registrada", count: list(sale.items).length });
+        for (const item of items) details.push(ctx.checked("SaleItem", item.productId, () => ({ ...item, saleId: sale.id, folio: sale.folio, date: sale.date, activityLabel:saleActivityLabels[saleItemActivity(item,productsById.get(String(item.productId)))], currentProduct: isRecharge(item) ? "" : item.productId == null && item.reference ? `Agrupación: ${item.name}` : ctx.lookup("products", item.productId, "SaleItem", sale.id, "productId", true)?.displayName || "No encontrado", unit: isRecharge(item) ? "" : unitLabel(item.unit), entryMode: item.entryMode === "amount" ? "Por monto" : item.entryMode === "quantity" ? "Por cantidad" : "No registrado", groupId: item.group?.id, groupName: item.group?.name, groupColorId: item.group?.colorId })));
     }
-    return [ctx.sheet("VENTAS", [id("id", "ID venta"), col("folio", "Folio"), col("origin", "Origen de captura"), col("commercialVersion", "Versión comercial"), col("state", "Estado"), date("voidedAt", "Fecha de anulación"), date("date", "Fecha"), col("payment", "Método de pago"), num("count", "Número de renglones"), cash("total", "Total documentado (MXN)"), cash("commercialTotal", "Valor comercial (MXN)"), cash("roundingAdjustment", "Ajuste de redondeo (MXN)"), col("paymentPolicy", "Política de cobro"), cash("confirmedCollected", "Último cobro confirmado (MXN)"), col("settlementState", "Liquidación monetaria"), notes, col("customer", "Cliente histórico (si existe)"), ...timestamps], sort(sales, ["date", "folio"])), ctx.sheet("DETALLE DE VENTAS", [id("saleId", "ID venta"), col("folio", "Folio"), date("date", "Fecha"), id("productId", "ID producto"), col("name", "Producto histórico", "text", 30), col("currentProduct", "Producto actual", "text", 30), col("unit", "Unidad"), num("quantity", "Cantidad"), cash("price", "Precio unitario histórico (MXN)"), col("entryMode", "Modo de venta"), cash("requestedAmount", "Monto solicitado (MXN)"), cash("subtotal", "Subtotal (MXN)"), col("discountRate", "Descuento (%)", "percent"), cash("discount", "Descuento (MXN)"), cash("amount", "Importe final (MXN)"), id("groupId", "ID agrupación histórica"), col("groupName", "Agrupación histórica"), id("groupColorId", "ID color histórico"), ...relations], sort(details, ["date", "folio"]))];
+    return [ctx.sheet("VENTAS", [id("id", "ID venta"), col("folio", "Folio"), col("origin", "Origen de captura"), col("commercialVersion", "Versión comercial"), col("state", "Estado"), date("voidedAt", "Fecha de anulación"), date("date", "Fecha"), col("payment", "Método de pago"), num("count", "Número de renglones"), cash("total", "Total documentado (MXN)"), cash("commercialTotal", "Valor comercial (MXN)"), cash("rechargeTotal", "Recargas telefónicas (MXN)"), cash("roundingAdjustment", "Ajuste de redondeo (MXN)"), col("paymentPolicy", "Política de cobro"), cash("confirmedCollected", "Último cobro confirmado (MXN)"), col("settlementState", "Liquidación monetaria"), notes, col("customer", "Cliente histórico (si existe)"), ...timestamps], sort(sales, ["date", "folio"])), ctx.sheet("DETALLE DE VENTAS", [id("saleId", "ID venta"), col("folio", "Folio"), date("date", "Fecha"), id("productId", "ID producto"), col("name", "Concepto histórico", "text", 30), col("activityLabel", "Actividad"), col("currentProduct", "Producto actual", "text", 30), col("unit", "Unidad"), num("quantity", "Cantidad"), cash("price", "Precio unitario histórico (MXN)"), col("entryMode", "Modo de venta"), cash("requestedAmount", "Monto solicitado (MXN)"), cash("subtotal", "Subtotal (MXN)"), col("discountRate", "Descuento (%)", "percent"), cash("discount", "Descuento (MXN)"), cash("amount", "Importe final (MXN)"), id("groupId", "ID agrupación histórica"), col("groupName", "Agrupación histórica"), id("groupColorId", "ID color histórico"), ...relations], sort(details, ["date", "folio"]))];
 }
 
 function build(snapshot, scope) {
@@ -274,7 +283,7 @@ function build(snapshot, scope) {
     const valid = ctx.purchases.filter(p => !p.voidedAt);
     const sum = (records, label, itemAmount = "total") => {
         const ids = new Set(records.map(r => text(r.id)));
-        const valid = ids.size === records.length && records.every(r => numeric(r.total) !== null && numeric(r.total) >= 0 && Array.isArray(r.items) && r.items.every(item => isRecord(item) && numeric(item[itemAmount]) !== null && numeric(item[itemAmount]) >= 0) && Math.abs(r.items.reduce((total, item) => total + numeric(item[itemAmount]), 0) - numeric(r.total)) < 0.011);
+        const valid = ids.size === records.length && records.every(r => numeric(r.total) !== null && numeric(r.total) >= 0 && Array.isArray(r.items) && r.items.every(item => isRecord(item) && numeric(item[itemAmount]) !== null && numeric(item[itemAmount]) >= 0) && (itemAmount==="amount"&&r.monetary ? validPaymentForExport(r) : Math.abs(r.items.reduce((total, item) => total + numeric(item[itemAmount]), 0) - numeric(r.total)) < 0.011));
         if (!valid) { ctx.problem("Resumen", "", "total", "", `No se calculó ${label}: importes inválidos, IDs duplicados o total distinto al detalle`); return null; }
         const total = records.reduce((sum, r) => sum + numeric(r.total), 0);
         return Number.isFinite(total) ? total : null;

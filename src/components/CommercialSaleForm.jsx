@@ -9,6 +9,7 @@ import {captureUnit,hardwareAmountQuantity,physicalQuantity,suggestedPhysical,we
 import {paymentAmounts,WEB_PAYMENT_POLICY} from '../domain/webPayment.mjs';
 import {wholesaleSettings} from '../domain/wholesalePricing.mjs';
 import {unitLabel} from '../utils/units.js';
+import {isRecharge,makeRechargeLine,PHONE_RECHARGE,RECHARGE_KEY,RECHARGE_NAME} from '../domain/phoneRecharge.mjs';
 import ModalHeader from './ModalHeader';
 import WebMoneyBreakdown from './WebMoneyBreakdown';
 import '../styles/components/SaleFormModal.css';
@@ -17,11 +18,16 @@ const discreteUnits=new Set(['pieza','rollo','paquete','envase','botella','bolsa
 const wholeQuantity=tariff=>tariff?.presentation?.integerOnly??discreteUnits.has(captureUnit(tariff));
 const selectedTariff=(choices,row)=>choices.get(row.choiceKey)?.tariffs.find(tariff=>tariff.key===row.tariffKey);
 const showsPhysical=(row,tariff)=>row.mode==='amount'&&Boolean(tariff)&&!tariff.service;
+const rechargeChoice={key:RECHARGE_KEY,kind:PHONE_RECHARGE,name:RECHARGE_NAME,displayName:RECHARGE_NAME,tariffs:[]};
 
 function calculateTicket(rows,choices){
  const errors=new Map(),draft=[];
  for(const row of rows){
   const choice=choices.get(row.choiceKey),tariff=choice?.tariffs.find(option=>option.key===row.tariffKey);
+  if(choice?.kind===PHONE_RECHARGE){
+   try{draft.push(makeRechargeLine(row.value,row.id));}catch(error){errors.set(row.id,error.message);}
+   continue;
+  }
   if(!tariff){errors.set(row.id,'Selecciona una tarifa disponible.');continue;}
   if(!row.value){errors.set(row.id,'Captura una cantidad o importe.');continue;}
   try{
@@ -40,14 +46,14 @@ function calculateTicket(rows,choices){
  let priced,issue='';
  try{priced=repriceLines(draft);}
  catch(error){
-  if(/ambigu/i.test(error.message)&&draft.some(line=>!line.commerceVersion&&line.entryMode==='amount'&&byId.get(line.id).physical)){
-   try{priced=repriceLines(draft.map(line=>!line.commerceVersion&&line.entryMode==='amount'
+  if(/ambigu/i.test(error.message)&&draft.some(line=>!isRecharge(line)&&!line.commerceVersion&&line.entryMode==='amount'&&byId.get(line.id).physical)){
+   try{priced=repriceLines(draft.map(line=>!isRecharge(line)&&!line.commerceVersion&&line.entryMode==='amount'
     ?{...line,confirmedQuantity:byId.get(line.id).physical||null}:line));}
    catch(retryError){issue=retryError.message;}
   }else issue=error.message;
  }
  const lines=(priced??[]).map(line=>{
-  if(line.commerceVersion||line.entryMode!=='amount')return line;
+  if(isRecharge(line)||line.commerceVersion||line.entryMode!=='amount')return line;
   const manual=byId.get(line.id).physical;
   try{return withWebPhysical(line,manual||suggestedPhysical(line),manual?'manual':'suggested');}
   catch(error){errors.set(line.id,error.message);return line;}
@@ -57,33 +63,47 @@ function calculateTicket(rows,choices){
 
 export default function CommercialSaleForm({snapshot,onSave,onClose,onRefresh}){
  const [query,setQuery]=useState(''),[selection,setSelection]=useState(null),[rows,setRows]=useState([]);
+ const [rechargeAmount,setRechargeAmount]=useState('');
  const [payment,setPayment]=useState('Efectivo'),[error,setError]=useState(''),[busy,setBusy]=useState(false),[stale,setStale]=useState(false);
  const [draftGeneration]=useState(snapshot.generation);
  const searchInput=useRef(null),saving=useRef(false);
  const wholesale=wholesaleSettings(snapshot.data);
- const choices=useMemo(()=>webCaptureChoices(catalogChoices(snapshot.data).filter(c=>['product','presentation','service'].includes(c.kind)),snapshot.data.products),[snapshot.data]);
+ const choices=useMemo(()=>{
+  const available=webCaptureChoices(catalogChoices(snapshot.data).filter(c=>['product','presentation','service'].includes(c.kind)),snapshot.data.products);
+  return snapshot.phoneRechargeEnabled?[...available,rechargeChoice]:available;
+ },[snapshot.data,snapshot.phoneRechargeEnabled]);
  const choiceByKey=useMemo(()=>new Map(choices.map(choice=>[choice.key,choice])),[choices]);
  const matches=query.trim()?searchChoices(choices,query).slice(0,30):[];
  const {lines,errors,issue}=useMemo(()=>calculateTicket(rows,choiceByKey),[rows,choiceByKey]);
  const lineById=new Map(lines.map(line=>[line.id,line]));
  const policy=snapshot.webPaymentPolicy?.enabled?snapshot.webPaymentPolicy.version:null;
- const paymentPreview=policy&&lines.length?paymentAmounts(lines,payment,policy):null;
- const canSave=rows.length>0&&!errors.size&&!issue&&!busy&&snapshot.generation===draftGeneration;
+ let paymentPreview=null, ticketTotal=0, paymentError='';
+ try {
+  ticketTotal=total(lines);
+  if(policy&&lines.length)paymentPreview=paymentAmounts(lines,payment,policy);
+ }catch(error){paymentError=error.message;}
+ const canSave=rows.length>0&&rows.length<=200&&!errors.size&&!issue&&!paymentError&&!busy&&snapshot.generation===draftGeneration;
+ const selectingRecharge=selection?.kind===PHONE_RECHARGE;
+ let rechargeError='';
+ if(selectingRecharge&&rechargeAmount)try{makeRechargeLine(rechargeAmount,'preview');}catch(error){rechargeError=error.message;}
+ const canAdd=selection&&!busy&&rows.length<200&&(!selectingRecharge||rechargeAmount&&!rechargeError);
  const invalidMessage=rows.map(row=>({row,message:errors.get(row.id)})).find(entry=>entry.message);
  const showPhysicalColumn=rows.some(row=>showsPhysical(row,selectedTariff(choiceByKey,row)));
  const showDescriptionColumn=rows.some(row=>selectedTariff(choiceByKey,row)?.service?.priceMode==='custom');
+ const showProductColumns=rows.some(row=>row.choiceKey!==RECHARGE_KEY);
 
  function add(){
-  if(!selection||busy)return;
+  if(!canAdd)return;
   const choice=choiceByKey.get(selection.key);
   if(!choice)return;
   const tariff=choice.tariffs.length===1?choice.tariffs[0]:null;
   const row={id:crypto.randomUUID(),choiceKey:choice.key,displayName:choice.displayName,
    tariffKey:tariff?.key??'',mode:tariff?.service?.priceMode==='custom'?'amount':'quantity',
-   value:'',physical:'',addons:tariff?.service?laundryOptions(tariff.service)[0]?.addons??[]:[],description:''};
+   value:selectingRecharge?rechargeAmount:'',physical:'',addons:tariff?.service?laundryOptions(tariff.service)[0]?.addons??[]:[],description:''};
   setRows(current=>[...current,row]);
   setSelection(null);
   setQuery('');
+  setRechargeAmount('');
   setError('');
   searchInput.current?.focus();
  }
@@ -124,25 +144,38 @@ export default function CommercialSaleForm({snapshot,onSave,onClose,onRefresh}){
   <DialogContent className="sale-modal-body">
    {error&&<p role="alert" className={error.startsWith('Catálogo actualizado.')?'alert alert-info':'alert alert-danger'}>{error}</p>}
    {stale&&onRefresh&&<Button disabled={busy} onClick={refreshDraft}>Actualizar catálogo</Button>}
-   <div className="sale-ticket-search">
+   <div className={`sale-ticket-search${selectingRecharge?' sale-ticket-search-recharge':''}`}>
     <Autocomplete size="small" value={selection} inputValue={query} disabled={busy} options={matches}
      onInputChange={(_,text,reason)=>{setQuery(text);if(reason==='input')setSelection(null);}}
-     onChange={(_,choice)=>{setSelection(choice);if(choice)setQuery(choice.displayName);}}
+     onChange={(_,choice)=>{setSelection(choice);setRechargeAmount('');if(choice)setQuery(choice.displayName);}}
      filterOptions={options=>options} getOptionLabel={choice=>choice.displayName} getOptionKey={choice=>choice.key}
      isOptionEqualToValue={(a,b)=>a.key===b.key} noOptionsText={query.trim()?'Sin coincidencias':'Escribe para buscar'}
      renderOption={(props,choice)=>{const {key,...rest}=props;return <li key={key} {...rest}><div>{choice.displayName}
-      <small className="d-block text-muted">{choice.tariffs.map(t=>t.service?.priceMode==='custom'?'Precio personalizado':money(t.price)+' / '+captureUnit(t)).join(' · ')}</small>
+      {choice.tariffs.length>0&&<small className="d-block text-muted">{choice.tariffs.map(t=>t.service?.priceMode==='custom'?'Precio personalizado':money(t.price)+' / '+captureUnit(t)).join(' · ')}</small>}
      </div></li>;}}
      renderInput={params=><TextField {...params} inputRef={searchInput} autoFocus label="Buscar producto o servicio"/>}/>
-    <Button type="button" variant="contained" disabled={!selection||busy} onClick={add}>Agregar</Button>
+    {selectingRecharge&&<TextField size="small" label="Importe de la recarga" value={rechargeAmount} disabled={busy}
+     error={!!rechargeError} helperText={rechargeError} autoComplete="off" slotProps={{htmlInput:{inputMode:'decimal'}}}
+     onChange={event=>setRechargeAmount(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();add();}}}/>}
+    <Button type="button" aria-label="Agregar a la venta" variant="contained" disabled={!canAdd} onClick={add}>Agregar</Button>
    </div>
    {rows.length>0&&<div className="table-responsive sale-items sale-ticket-scroll">
     <table className={`table align-middle sale-ticket-table ${showPhysicalColumn?'sale-ticket-table-physical':''}`}>
-     <thead><tr><th scope="col">Producto</th><th scope="col">Modo</th><th scope="col">Cantidad / importe</th>
+     <thead><tr><th scope="col">Concepto</th>{showProductColumns?<><th scope="col">Modo</th><th scope="col">Cantidad / importe</th></>:<th scope="col">Importe</th>}
       {showPhysicalColumn&&<th scope="col">Cantidad física</th>}{showDescriptionColumn&&<th scope="col">Descripción</th>}
       <th scope="col" className="sale-ticket-subtotal">Subtotal</th><th scope="col"><span className="visually-hidden">Eliminar</span></th></tr></thead>
      <tbody>{rows.map(row=>{
       const choice=choiceByKey.get(row.choiceKey),tariff=choice?.tariffs.find(t=>t.key===row.tariffKey),line=lineById.get(row.id);
+      if(choice?.kind===PHONE_RECHARGE)return <tr key={row.id}>
+       <th scope="row" className="sale-ticket-name">{RECHARGE_NAME}</th>
+       <td colSpan={1+Number(showProductColumns)+Number(showPhysicalColumn)+Number(showDescriptionColumn)}>
+        <label className="d-block">Importe de la recarga<input className="form-control form-control-sm" inputMode="decimal"
+         value={row.value} disabled={busy} onChange={event=>update(row.id,{value:event.target.value})}/></label>
+       </td>
+       <td className="sale-ticket-subtotal">{line?money(line.amount):'—'}</td>
+       <td><button type="button" className="sale-remove" aria-label={`Eliminar ${RECHARGE_NAME}`} disabled={busy}
+        onClick={()=>{setRows(current=>current.filter(item=>item.id!==row.id));setError('');}}>×</button></td>
+      </tr>;
       const service=tariff?.service,custom=service?.priceMode==='custom',amount=row.mode==='amount';
       const unit=unitLabel(captureUnit(tariff)),physical=showsPhysical(row,tariff);
       const step=amount?'0.01':service?.loadPricing?.step??(wholeQuantity(tariff)||service?.unit==='carga'||service?.unit==='servicio'?'1':'0.000001');
@@ -190,13 +223,13 @@ export default function CommercialSaleForm({snapshot,onSave,onClose,onRefresh}){
      })}</tbody>
     </table>
    </div>}
-   {(issue||invalidMessage&&invalidMessage.row.value)&&<p role="alert" className="text-danger small mt-2 mb-0">{issue||`${invalidMessage.row.displayName}: ${invalidMessage.message}`}</p>}
+   {(issue||paymentError||invalidMessage&&invalidMessage.row.value)&&<p role="alert" className="text-danger small mt-2 mb-0">{issue||paymentError||`${invalidMessage.row.displayName}: ${invalidMessage.message}`}</p>}
    <label className="sale-ticket-payment">Forma de pago<select className="form-select form-select-sm" value={payment} disabled={busy}
     onChange={event=>setPayment(event.target.value)}>{['Efectivo','Transferencia','Tarjeta'].map(method=><option key={method}>{method}</option>)}</select></label>
   </DialogContent>
   <DialogActions className="sale-modal-actions">
    <div className="sale-footer-total"><span>{policy?'Total a cobrar':'Total'}</span><WebMoneyBreakdown monetary={paymentPreview}/>
-    <strong>{money(paymentPreview?paymentPreview.collectedCents/100:total(lines))}</strong></div>
+    <strong>{paymentError?'—':money(paymentPreview?paymentPreview.collectedCents/100:ticketTotal)}</strong></div>
    <Button disabled={busy} onClick={onClose}>Cancelar</Button>
    <Button variant="contained" disabled={!canSave} onClick={save}>{busy?'Registrando…':'Registrar venta'}</Button>
   </DialogActions>

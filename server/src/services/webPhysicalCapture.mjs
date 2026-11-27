@@ -1,17 +1,18 @@
 import {createMobileSale,correctMobileSale} from '../mobile/domain.mjs';
 import {validateWebPhysical} from '../../../src/domain/webSaleCapture.mjs';
+import {rechargeOnlyCorrection} from '../../../src/domain/phoneRecharge.mjs';
 const hasPhysical=s=>s.origin==='WEB'&&s.items.some(i=>i.webPhysicalQuantity);
 function attach(sale,metadata,receiptKey){
  sale.items=sale.items.map((line,n)=>metadata[n]?{...line,webPhysicalQuantity:validateWebPhysical(metadata[n],line)}:line);
  sale[receiptKey]={...sale[receiptKey],items:sale[receiptKey].items.map((row,n)=>({...row,...(sale.items[n].webPhysicalQuantity?{webPhysicalQuantity:{...sale.items[n].webPhysicalQuantity}}:{})}))};
 }
-export function createWebSale(sales,input,catalog,sequence){
+export function createWebSale(sales,input,catalog,sequence,webRecharge=false){
  const metadata=(input.items||[]).map(r=>r.webPhysicalQuantity);
  const clean={...input,origin:'WEB',items:input.items?.map(r=>r.webPhysicalQuantity&&!r.webPhysicalQuantity.priceConfirmation?{...r,confirmedQuantity:null}:r)};
- const result=createMobileSale(sales,clean,catalog,sequence);attach(result[0],metadata,'originalReceipt');return result;
+ const result=createMobileSale(sales,clean,catalog,sequence,{webRecharge});attach(result[0],metadata,'originalReceipt');return result;
 }
 export function correctWebAwareSale(sales,id,input){
- const old=sales.find(s=>s.id===id);if(!old||!hasPhysical(old))return correctMobileSale(sales,id,input);
+ const old=sales.find(s=>s.id===id);if(!old||!hasPhysical(old)||rechargeOnlyCorrection(old,input))return correctMobileSale(sales,id,input);
  const metadata=old.items.map((line,n)=>{
   if(!line.webPhysicalQuantity)return null;
   const raw=input.webPhysicalQuantities?.[n];

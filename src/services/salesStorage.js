@@ -1,4 +1,5 @@
 import {assertPayment} from '../domain/webPayment.mjs';
+import {isRecharge,PHONE_RECHARGE,RECHARGE_ACTIVITY,validateRechargeLine} from '../domain/phoneRecharge.mjs';
 import { STORAGE_KEYS } from "./catalogStorage.js";
 import { calculateItems, localDate } from "../utils/salesUtils.js";
 import { validDate } from "../utils/procurementUtils.js";
@@ -18,6 +19,13 @@ export function validateSales(sales) {
         if (sale.folio) folios.add(sale.folio);
         const products = new Set();
         for (const item of sale.items) {
+            if (isRecharge(item)) {
+                if (sale.origin !== 'WEB' || typeof item.id !== 'string' || !item.id || products.has(item.id)) throw Error('Renglón de recarga inválido.');
+                validateRechargeLine(item);
+                products.add(item.id);
+                continue;
+            }
+            if (item?.reference?.kind === PHONE_RECHARGE || item?.activity === RECHARGE_ACTIVITY) throw Error('Renglón de recarga inválido.');
             if (!item || (item.productId == null && !(['line','category','priceGroup','service'].includes(item.reference?.kind) && item.reference?.id != null)) || products.has(item.id || String(item.productId)) || typeof item.name !== "string" || !normalizeUnit(item.unit) || !amount(item.price) || !Number.isFinite(item.quantity) || item.quantity <= 0 || !amount(item.amount)) throw new Error("Hay un renglón de venta inválido. Se conservó el historial original.");
             products.add(item.id || String(item.productId));
         }

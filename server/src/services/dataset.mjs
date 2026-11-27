@@ -10,6 +10,7 @@ import { readDataset, writeDataset, insertSupplyInventoryProduct } from '../repo
 import { ApiError, executeCommand } from './commands.mjs';
 import { inventoryAvailable,readInventory,inventoryPolicy } from '../repositories/inventory.mjs';
 import { inventoryCommands,executeInventoryCommand,syncInventory } from './inventory.mjs';
+import {isRecharge} from '../../../src/domain/phoneRecharge.mjs';
 
 // Serialización canónica para claves de idempotencia, independiente del orden de propiedades JSON.
 export function canonical(value) {
@@ -65,7 +66,7 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
       return {status:'cancelled',...response};
     }),
     async command({name,args,revision,generation,requestKey,channel='WEB'}) {
-      if(name==='createMobileSale'&&channel!=='MOVIL')throw new ApiError(403,'CHANNEL_FORBIDDEN','Canal no autorizado.');
+      if((name==='createMobileSale'&&channel!=='MOVIL')||(name==='createCommercialSale'&&channel!=='WEB'))throw new ApiError(403,'CHANNEL_FORBIDDEN','Canal no autorizado.');
       if (!Number.isSafeInteger(revision)||typeof generation!=='string'||!requestKey||!/^[a-zA-Z0-9:_-]{8,150}$/.test(requestKey)) throw new ApiError(400,'INVALID_PRECONDITION','Se requieren revisión, generación y clave de idempotencia.');
       const hash=createHash('sha256').update(canonical({name,args,generation})).digest('hex');
       return transaction(async c=>{
@@ -78,14 +79,14 @@ export function createDatasetService(pool, schema='calcquim_sandbox',purpose='sy
           return {...current,...await paymentView(c),...await presentationView(c),result:previous.response,replayed:true,inventoryPending:await inventoryPending(c),inventoryEnabled:await inventoryAvailable(c)?(await inventoryPolicy(c)).sales_enabled:false};
         }
         if(current.generation!==generation||current.revision!==revision) throw new ApiError(412,'STALE_DATA','Los datos cambiaron. Recarga antes de guardar.');
-        if(channel==='MOVIL'&&['correctMobileSale','voidSale'].includes(name)&&current.data.sales.some(s=>s.id===args[0]&&s.items.some(i=>i.presentationSnapshot?.supplyInventory)))
-          throw new ApiError(403,'CHANNEL_FORBIDDEN','Gestiona esta venta de insumo en Nexo Web.');
+        if(channel==='MOVIL'&&['correctMobileSale','voidSale'].includes(name)&&current.data.sales.some(s=>s.id===args[0]&&s.items.some(i=>i.presentationSnapshot?.supplyInventory||isRecharge(i))))
+          throw new ApiError(403,'CHANNEL_FORBIDDEN','Gestiona esta venta en Nexo Web.');
         let result;
         const before=structuredClone(current.data);
         try {
           if(name==='configureWebPaymentPolicy')result=await configureWebPayment(c,args[0]);
           else if(inventoryCommands.includes(name))result={ok:true,...await executeInventoryCommand(c,current.data,name,args)};
-          else {const policy=await webPaymentSnapshot(c);result=executeCommand(current.data,current.counters,name,args,{webPaymentEnabled:channel==='WEB'&&policy.enabled,mobilePaymentEnabled:channel==='MOVIL'&&policy.enabled&&(purpose==='synthetic'||purpose==='operational'&&process.env.CALCQUIM_MOBILE_OPERATIONAL_AUTHORIZED==='yes'&&process.env.CALCQUIM_MOBILE_COMMERCE_AUTHORIZED==='yes'),webPaymentVersion:policy.policy_version});}
+          else {const policy=await webPaymentSnapshot(c);result=executeCommand(current.data,current.counters,name,args,{phoneRechargeEnabled:current.phoneRechargeEnabled,webPaymentEnabled:channel==='WEB'&&policy.enabled,mobilePaymentEnabled:channel==='MOVIL'&&policy.enabled&&(purpose==='synthetic'||purpose==='operational'&&process.env.CALCQUIM_MOBILE_OPERATIONAL_AUTHORIZED==='yes'&&process.env.CALCQUIM_MOBILE_COMMERCE_AUTHORIZED==='yes'),webPaymentVersion:policy.policy_version});}
         }
         catch(error) {if(error instanceof ApiError) throw error; throw new ApiError(422,'DOMAIN_VALIDATION',error.message);}
         if(name==='configureWebPaymentPolicy'){await c.query('UPDATE dataset_state SET revision=revision+1 WHERE singleton=true');}

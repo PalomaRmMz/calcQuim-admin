@@ -164,7 +164,7 @@ export async function reconcileRelationalColumns(c,data) {
       for(const [index,row]of rows.entries()){
         const item=parent.items[index];
         for(const [field,path]of Object.entries(amountFields)){checked++;if(decimal(row[field])!==decimal(value(item,path)))failed++;}
-        checked++;if(row.unit!==item.unit)failed++;
+        checked++;if(row.unit!==(item.unit??null))failed++;
         const relations=table==='purchase_items'?{legacy_id:'id',source_id:'supplyItemId',purchased_item_id:'purchasedItemId',product_id:'productId'}:{product_id:'productId'};
         for(const [field,path]of Object.entries(relations)){checked++;const v=value(item,path);if(row[field]!== (v==null?null:String(v)))failed++;}
       }

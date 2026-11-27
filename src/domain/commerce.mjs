@@ -1,6 +1,18 @@
 import {validateLaundryPricing,calculateLaundryLoad} from './laundryPricing.mjs';
+import {isRecharge,RECHARGE_ACTIVITY} from './phoneRecharge.mjs';
+import {reportedCollection} from './reportPayment.mjs';
+import {productActivity} from './activityScope.mjs';
 export const COMMERCE_VERSION='fullclean-commerce-v1';
 export const ACTIVITIES=['LIMPIEZA','JARCERIA','LAVANDERIA'];
+export const saleActivityLabels={
+ LIMPIEZA:'Productos de limpieza',JARCERIA:'Jarcería',LAVANDERIA:'Lavandería',
+ [RECHARGE_ACTIVITY]:'Recargas telefónicas',SIN_CLASIFICAR:'Sin clasificar',
+};
+export function saleItemActivity(item,product){
+ if(isRecharge(item))return RECHARGE_ACTIVITY;
+ if(ACTIVITIES.includes(item.activity))return item.activity;
+ return product?productActivity(product):'SIN_CLASIFICAR';
+}
 const fail=message=>{throw new Error(message);};
 export const sameId=(a,b)=>String(a)===String(b);
 export function decimal(value,places=6,positive=true){
@@ -63,12 +75,35 @@ export function historicalCommerceLine(old,value,options={}){
  const c={kind:old.reference.kind,refId:old.reference.id,name:old.name,context:old.context,tariffs:[t]};
  return {...old,...makeCommerceLine(c,t,old.entryMode,value,old.id,{addons:options.addons??old.addons?.map(a=>a.id)??[],description:options.description??old.description})};
 }
-export function commerceReport(sales,from='',to=''){
- const byActivity={LIMPIEZA:0,JARCERIA:0,LAVANDERIA:0,SIN_CLASIFICAR:0},rank=new Map(),articles=new Map();let totalCents=0,mixed=0;
- for(const sale of sales.filter(s=>!s.voidedAt&&(!from||s.date>=from)&&(!to||s.date<=to))){const activities=new Set();for(const i of sale.items){const activity=ACTIVITIES.includes(i.activity)?i.activity:'SIN_CLASIFICAR',cents=Math.round(i.amount*100);byActivity[activity]+=cents;totalCents+=cents;activities.add(activity);const key=JSON.stringify([activity,i.reference?.kind,i.presentationId??i.serviceId??i.productId??i.reference?.id,i.unit]);if(!rank.has(key))rank.set(key,{activity,name:i.name,unit:i.unit,quantity:0,amount:0,type:i.lineType??'historical'});const r=rank.get(key);r.quantity+=i.quantity;r.amount+=cents;}if(activities.size>1)mixed++;}
- for(const sale of sales.filter(s=>!s.voidedAt&&(!from||s.date>=from)&&(!to||s.date<=to)))for(const item of sale.items.filter(i=>i.activity==='JARCERIA'&&i.baseQuantity!=null)){
+export function commerceReport(sales,from='',to='',products=[]){
+ const byActivity=Object.fromEntries(Object.keys(saleActivityLabels).map(key=>[key,0]));
+ const rank=new Map(),articles=new Map(),byId=new Map(products.map(product=>[String(product.id),product]));
+ const active=sales.filter(s=>!s.voidedAt&&(!from||s.date>=from)&&(!to||s.date<=to));
+ let totalCents=0,collectedCents=0,confirmedCents=0,collectionKnown=true,confirmedKnown=true,mixed=0;
+ for(const sale of active){
+  const collection=reportedCollection(sale),activities=new Set();
+  if(collection.collected==null)collectionKnown=false;
+  else collectedCents+=collection.collected;
+  if(collection.confirmed==null)confirmedKnown=false;
+  else confirmedCents+=collection.confirmed;
+  for(const item of sale.items){
+   const activity=saleItemActivity(item,byId.get(String(item.productId)));
+   const cents=Math.round(item.amount*100);
+   byActivity[activity]+=cents;
+   totalCents+=cents;
+   activities.add(activity);
+   if(isRecharge(item))continue;
+   const key=JSON.stringify([activity,item.reference?.kind,item.presentationId??item.serviceId??item.productId??item.reference?.id,item.unit]);
+   if(!rank.has(key))rank.set(key,{activity,name:item.name,unit:item.unit,quantity:0,amount:0,type:item.lineType??'historical'});
+   const row=rank.get(key);
+   row.quantity+=item.quantity;
+   row.amount+=cents;
+  }
+  if(activities.size>1)mixed++;
+ }
+ for(const sale of active)for(const item of sale.items.filter(i=>i.activity==='JARCERIA'&&i.baseQuantity!=null)){
    const key=JSON.stringify([item.productId,item.baseUnit]);if(!articles.has(key))articles.set(key,{productId:item.productId,name:item.context?.replace(/^Jarcería · /,'')||item.name,unit:item.baseUnit,quantity:0,amount:0});const row=articles.get(key);row.quantity+=item.baseQuantity;row.amount+=Math.round(item.amount*100);
  }
  const ranking=[...rank.values()].map(r=>({...r,amount:r.amount/100})).sort((a,b)=>b.amount-a.amount);
- return {total:totalCents/100,mixed,byActivity:Object.fromEntries(Object.entries(byActivity).map(([k,v])=>[k,v/100])),ranking,articleRanking:[...articles.values()].map(r=>({...r,amount:r.amount/100})).sort((a,b)=>a.unit.localeCompare(b.unit)||b.quantity-a.quantity),serviceRanking:ranking.filter(r=>r.activity==='LAVANDERIA').sort((a,b)=>a.unit.localeCompare(b.unit)||b.quantity-a.quantity)};
+ return {total:totalCents/100,collected:collectionKnown?collectedCents/100:null,confirmedCollected:confirmedKnown?confirmedCents/100:null,mixed,byActivity:Object.fromEntries(Object.entries(byActivity).map(([k,v])=>[k,v/100])),ranking,articleRanking:[...articles.values()].map(r=>({...r,amount:r.amount/100})).sort((a,b)=>a.unit.localeCompare(b.unit)||b.quantity-a.quantity),serviceRanking:ranking.filter(r=>r.activity==='LAVANDERIA').sort((a,b)=>a.unit.localeCompare(b.unit)||b.quantity-a.quantity)};
 }

@@ -1,5 +1,10 @@
 .sale-modal-form { display: flex; flex-direction: column; overflow: hidden; min-height: 0; color: #25334a; }
 .sale-ticket-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
+.sale-ticket-search-recharge { grid-template-columns: minmax(0, 1fr) minmax(10rem, 0.65fr) auto; align-items: start; }
+@media (max-width: 600px) {
+ .sale-ticket-search-recharge { grid-template-columns: minmax(0, 1fr) auto; }
+ .sale-ticket-search-recharge > .MuiAutocomplete-root { grid-column: 1 / -1; }
+}
 .sale-ticket-scroll { margin-top: 12px; background: var(--cq-surface, #fff); }
 .sale-ticket-table { min-width: 510px; }
 .sale-ticket-table-physical { min-width: 635px; }

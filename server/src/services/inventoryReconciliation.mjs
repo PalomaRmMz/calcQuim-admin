@@ -1,3 +1,4 @@
+import {hasPhysicalSaleLine} from '../../../src/domain/phoneRecharge.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {inventoryConvert,inventoryDecimal,inventoryText} from '../../../src/services/inventoryUnits.js';
 import {exactSaleQuantity,checkBaseline,allocate,addPending} from './inventory.mjs';
@@ -7,7 +8,7 @@ export function planInventoryReconciliation(data,view,{cutoff,confirmations={}}=
   if(!cutoff||!Number.isFinite(Date.parse(cutoff)))throw new Error('Corte de auditoría obligatorio.');
   const rows=[];
   for(const sale of data.sales.filter(s=>Date.parse(s.createdAt??s.date)<=Date.parse(cutoff)))for(const[itemOrdinal,item]of sale.items.entries()) {
-    if(item.lineType==='service')continue;
+    if(!hasPhysicalSaleLine(item))continue;
     const key=String(sale.id)+':'+itemOrdinal;
     const all=view.movements.filter(m=>m.sale_id===String(sale.id)&&m.sale_ordinal===itemOrdinal);
     const active=all.filter(m=>m.kind==='sale'&&!view.movements.some(r=>r.reversal_of===m.id));

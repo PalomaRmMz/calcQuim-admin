@@ -1,5 +1,6 @@
 import {makeLine,repriceLines} from '../../server/src/mobile/sale.mjs';
 import {normalizeText} from '../utils/catalogUtils.js';
+import {hasPhysicalSaleLine} from './phoneRecharge.mjs';
 import {decimal} from './commerce.mjs';
 import {webHardwareSaleUnit} from './webHardwarePresentationName.mjs';
 export const WEB_PHYSICAL_VERSION='web-confirmed-quantity-v1';
@@ -59,12 +60,12 @@ export function suggestedPhysical(line){
  return physicalQuantity(`${micro/1000000n}.${String(micro%1000000n).padStart(6,'0')}`);
 }
 export function withWebPhysical(line,value,source='suggested'){
- if(line.entryMode!=='amount'||line.commerceVersion)throw Error('La confirmación física aplica a Limpieza por monto.');
+ if(!hasPhysicalSaleLine(line)||line.entryMode!=='amount'||line.commerceVersion)throw Error('La confirmación física aplica a Limpieza por monto.');
  const priceConfirmation=line.confirmedQuantity!=null&&line.confirmedQuantity!=='';
  return {...line,webPhysicalQuantity:{version:WEB_PHYSICAL_VERSION,quantity:physicalQuantity(value),unit:line.unit,source,...(priceConfirmation?{priceConfirmation:true}:{})}};
 }
 export function validateWebPhysical(metadata,line){
- if(!metadata||metadata.version!==WEB_PHYSICAL_VERSION||metadata.unit!==line.unit||!['suggested','manual'].includes(metadata.source)||line.entryMode!=='amount'||line.commerceVersion||line.activity==='JARCERIA'||line.lineType==='service')throw Error('Confirmación física web inválida.');
+ if(!metadata||metadata.version!==WEB_PHYSICAL_VERSION||metadata.unit!==line.unit||!['suggested','manual'].includes(metadata.source)||!hasPhysicalSaleLine(line)||line.entryMode!=='amount'||line.commerceVersion||line.activity==='JARCERIA')throw Error('Confirmación física web inválida.');
  if(metadata.priceConfirmation!=null&&(metadata.priceConfirmation!==true||metadata.source!=='manual'||physicalQuantity(line.confirmedQuantity)!==physicalQuantity(metadata.quantity)))throw Error('La confirmación de precio debe coincidir con los litros confirmados y las reglas comerciales vigentes.');
  return {...metadata,quantity:physicalQuantity(metadata.quantity)};
 }

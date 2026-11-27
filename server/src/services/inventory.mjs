@@ -13,12 +13,13 @@ import { normalizeUnit } from '../../../src/utils/units.js';
 import { inventoryConvert,inventoryDecimal,inventoryText } from '../../../src/services/inventoryUnits.js';
 import { inventoryAvailable,inventoryPolicy,inventoryChange,inventoryAccount,appendInventoryMovement,readInventory,purchaseAutomationPolicy } from '../repositories/inventory.mjs';
 import { resolveInventoryReason,movementReasonContext } from '../../../src/services/inventoryReasons.js';
+import {hasPhysicalSaleLine,rechargeOnlyCorrection} from '../../../src/domain/phoneRecharge.mjs';
 import { validDate } from '../../../src/utils/procurementUtils.js';
 // An exact monetary conversion can establish a six-decimal physical quantity.
 // Repeating fractions require explicit confirmation; no inventory rounding.
 export function exactSaleQuantity(item, product, origin) {
   try {
-    if(item.lineType==='service')return null;
+    if(!hasPhysicalSaleLine(item))return null;
     if(item.presentationSnapshot)return inventoryConvert(item.baseQuantity,item.baseUnit,product.unit);
     if(product.activity==='JARCERIA'&&item.entryMode==='amount')return null;
     if(item.entryMode!=='amount')return inventoryConvert(item.quantity,item.unit,product.unit);
@@ -261,7 +262,7 @@ export async function syncInventory(c,before,data,name,args){
     const current=data.sales.find(s=>s.id===old.id);
     if(!current||(name!=='correctMobileSale'&&(digest(current.items)!==digest(old.items)||current.total!==old.total))||(current.voidedAt!==old.voidedAt&&name!=='voidSale'))fail('No se reescriben ventas con inventario: conserva el original y utiliza la anulación con confirmación física.');
   }
-  if(name==='correctMobileSale') {
+  if(name==='correctMobileSale'&&!rechargeOnlyCorrection(before.sales.find(s=>s.id===args[0]),args[1])) {
     const sale=data.sales.find(s=>s.id===args[0]);
     if((await c.query("SELECT 1 FROM inventory_movements WHERE sale_id=$1 AND kind='return' LIMIT 1",[sale.id])).rowCount)fail('La venta tiene devoluciones: requiere revisión física específica antes de corregir.');
     const outputs=(await c.query("SELECT m.* FROM inventory_movements m WHERE sale_id=$1 AND kind='sale' AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reversal_of=m.id)",[sale.id])).rows;
@@ -272,7 +273,7 @@ export async function syncInventory(c,before,data,name,args){
     }
     await c.query("UPDATE inventory_pending SET state='cancelled' WHERE sale_id=$1 AND state IN ('pending','resolved')",[sale.id]);
     for(const [ordinal,item] of sale.items.entries()) {
-      if(item.lineType==='service')continue;
+      if(!hasPhysicalSaleLine(item))continue;
       if(!['product','presentation'].includes(item.reference.kind)||!exactSaleQuantity(item,findProduct(data,item.productId),sale.origin))await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});
       else {
         const product=findProduct(data,item.productId);
@@ -286,9 +287,9 @@ export async function syncInventory(c,before,data,name,args){
   if(name==='createSale'||name==='createMobileSale'||name==='createCommercialSale'){
     const sale=data.sales.find(s=>!before.sales.some(old=>old.id===s.id));if(!sale)return;
     const intents=args[0].inventory??{};
-    if(typeof intents!=='object'||Array.isArray(intents)||Object.entries(intents).some(([id,intent])=>!sale.items.some(i=>String(i.productId)===id)||!intent||typeof intent!=='object'||typeof intent.pendingGroup!=='boolean'))fail('La intención de inventario debe referir a renglones de la venta.');
+    if(typeof intents!=='object'||Array.isArray(intents)||Object.entries(intents).some(([id,intent])=>!sale.items.some(i=>i.productId!=null&&String(i.productId)===id)||!intent||typeof intent!=='object'||typeof intent.pendingGroup!=='boolean'))fail('La intención de inventario debe referir a renglones de la venta.');
     for(const [ordinal,item]of sale.items.entries()){
-      if(item.lineType==='service')continue;
+      if(!hasPhysicalSaleLine(item))continue;
       if(item.reference&&!['product','presentation'].includes(item.reference.kind)){
         await addPending(c,sale,ordinal,item,{scope:item.reference.kind,scopeId:item.reference.id,reason:item.entryMode==='amount'?'amount':'group'});continue;
       }
@@ -308,7 +309,7 @@ export async function syncInventory(c,before,data,name,args){
   }
   if(name==='voidSale'){
     const sale=data.sales.find(s=>String(s.id)===String(args[0]));
-    if(sale.items.some(i=>i.lineType!=='service')&&!['returned','not_returned'].includes(args[1]?.inventoryReturn))fail('Confirma si el producto no salió o regresó físicamente, o si permanece fuera.','PHYSICAL_RETURN_REQUIRED');
+    if(sale.items.some(hasPhysicalSaleLine)&&!['returned','not_returned'].includes(args[1]?.inventoryReturn))fail('Confirma si el producto no salió o regresó físicamente, o si permanece fuera.','PHYSICAL_RETURN_REQUIRED');
     const why=reason(args[1]??{},'sale_void');
     await c.query("UPDATE inventory_pending SET state='cancelled' WHERE sale_id=$1 AND state IN ('pending','resolved')",[String(sale.id)]);
     if(args[1].inventoryReturn==='returned'){

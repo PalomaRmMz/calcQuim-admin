@@ -1,3 +1,5 @@
+import {isRecharge,validateRechargeLine} from "../domain/phoneRecharge.mjs";
+import {assertPayment} from "../domain/webPayment.mjs";
 import { supplyModelIssues } from './supplyModel.js';
 import { normalizeText } from "../utils/catalogUtils.js";
 import { normalizeUnit } from "../utils/units.js";
@@ -99,6 +101,14 @@ export function auditCalcQuim(snapshot, today = localDate()) {
             const key = String(purchase ? item.id ?? index : item.id ?? item.productId);
             if (seen.has(key)) add("CRÍTICO", child, id, "id", "Renglón duplicado");
             seen.add(key);
+            if (!purchase && isRecharge(item)) {
+                try {
+                    if (row.origin !== "WEB" || !item.id) throw Error("Origen o ID de recarga inválido");
+                    validateRechargeLine(item);
+                } catch (error) { add("ALTO", child, id, "amount", error.message); }
+                total += numberValue(item.amount) ?? NaN;
+                return;
+            }
             const productId = item.productId ?? item.outputProductId;
             ref("products", productId, child, id, "productId", !purchase && !item.reference);
             if (!purchase && item.reference && item.productId == null) ref(({line:"productLines",category:"categories",priceGroup:"priceGroups"})[item.reference.kind], item.reference.id, child, id, "reference", true);
@@ -111,7 +121,11 @@ export function auditCalcQuim(snapshot, today = localDate()) {
             total += numberValue(item[purchase ? "total" : "amount"]) ?? NaN;
             if (typeof item.name !== "string" || !item.name.trim()) add("MEDIO", child, id, "name", "Nombre histórico ausente");
         });
-        if (!Number.isFinite(total) || Math.abs(total - row.total) > 0.011) add("ALTO", entity, row.id, "total", "Total distinto del detalle o fuera de rango");
+        let validTotal=Number.isFinite(total) && Math.abs(total-row.total)<=0.011;
+        if (!purchase && row.monetary) {
+            try { assertPayment(row); validTotal=true; } catch { validTotal=false; }
+        }
+        if (!validTotal) add("ALTO", entity, row.id, "total", "Total distinto del detalle o fuera de rango");
         if (row.revisions != null && !Array.isArray(row.revisions)) add("ALTO", entity, row.id, "revisions", "Revisiones inválidas");
         else row.revisions?.forEach(revision => { if (revision && typeof revision === "object") transaction(revision, purchase, depth + 1); else add("CRÍTICO", entity, row.id, "revisions", "Revisión ilegible"); });
     }

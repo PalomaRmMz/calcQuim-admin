@@ -1,3 +1,4 @@
+import {hasPhysicalSaleLine} from './phoneRecharge.mjs';
 export const SUPPLIER_ACTIVITIES=['LIMPIEZA','JARCERIA'];
 export const productActivity=product=>product?.activity==='JARCERIA'?'JARCERIA':'LIMPIEZA';
 export const supplierActivityLabel=value=>({LIMPIEZA:'Productos de limpieza',JARCERIA:'Jarcería'}[value]||'Pendiente de clasificación');
@@ -17,7 +18,7 @@ export function purchaseScopeLabel(purchase){return purchaseActivity(purchase)==
 export function scopeInventoryData(data,activity){
  const products=data.products.filter(p=>productActivity(p)===activity),ids=new Set(products.map(p=>String(p.id)));
  const purchases=data.procurement.purchases.filter(p=>p.items.some(i=>i.productId!=null?ids.has(String(i.productId)):activity==='LIMPIEZA'&&!i.commercialPurchase));
- const sales=data.sales.filter(s=>s.items.some(i=>i.lineType!=='service'&&(i.productId!=null?ids.has(String(i.productId)):i.activity?i.activity===activity:activity==='LIMPIEZA')));
+ const sales=data.sales.filter(s=>s.items.some(i=>hasPhysicalSaleLine(i)&&(i.productId!=null?ids.has(String(i.productId)):i.activity?i.activity===activity:activity==='LIMPIEZA')));
  return {...data,products,sales,procurement:{...data.procurement,purchases}};
 }
 
